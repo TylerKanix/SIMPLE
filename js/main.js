@@ -1671,8 +1671,13 @@ function renderLog(el) {
 }
 
 /* ---- boot ---------------------------------------------------------------- */
-document.addEventListener('DOMContentLoaded', () => {
+function boot() {
   setSeed(Math.floor(Math.random() * 2 ** 31));
   calibrateStates();
   render();
-});
+}
+
+/* Bundled into a single file, this script can run after the document has
+   already finished parsing, in which case DOMContentLoaded will never fire. */
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+else boot();

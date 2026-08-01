@@ -5,6 +5,11 @@
    ========================================================================== */
 
 :root {
+  /* This page commits to one visual world — a darkened decision desk on
+     election night — so the scheme is pinned rather than following the
+     viewer's light/dark preference. */
+  color-scheme: dark;
+
   --bg:        #0d1117;
   --bg-2:      #141b24;
   --bg-3:      #1c2531;
