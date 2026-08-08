@@ -365,9 +365,15 @@ const SAFE_COMPRESSION = 0.40;
 
 let CALIBRATED = false;
 let NATIONAL_BASE = 0;
+/* The two generic nominees are kept after calibration rather than discarded.
+   Every "you are running four points ahead of a generic Democrat here" figure
+   in the game is measured against them, so they have to be the same objects
+   the map was solved with. */
+const GENERIC = { D: null, R: null };
 function calibrateStates() {
   if (CALIBRATED) return;
   const D = calibrationCandidate('D'), R = calibrationCandidate('R');
+  GENERIC.D = D; GENERIC.R = R;
   const env = { incumbentParty: 'R', incumbentPenalty: 0 };
 
   // Anchor to *relative* lean, not absolute. The prior year's national margin
@@ -462,6 +468,19 @@ function recenter(D, R, env) {
 /* ==========================================================================
    PRIMARY
    ========================================================================== */
+/* The November electorate: every state's composition, weighted by electoral
+   votes and by how reliably each bloc actually turns out. */
+function nationalWeights() {
+  const out = {}; let tot = 0;
+  for (const b of BLOCS) {
+    let v = 0;
+    for (const s of STATES) v += s.comp[b.id] * s.weight;
+    v *= b.turnout; out[b.id] = v; tot += v;
+  }
+  for (const k in out) out[k] /= tot;
+  return out;
+}
+
 function primaryElectorate(partyId) {
   const w = PARTIES[partyId].primaryWeights;
   const out = {};
@@ -614,6 +633,7 @@ function caucusUtility(caucus, bill, selectedIds, ctx) {
   // Party loyalty and presidential pressure
   if (samePartyLabel) {
     u += caucus.discipline * 1.55;
+    u += (ctx.loyalty || 0) * 0.06;             // credit banked by standing by your people
     u += (ctx.approval - 44) / 48 * caucus.exposure * 1.25;
     u += (ctx.baseMorale - 50) / 100 * (caucus.id === 'prog' || caucus.id === 'freedom' ? 0.9 : 0.25);
   } else {
