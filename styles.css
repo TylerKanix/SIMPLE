@@ -839,3 +839,53 @@ tbody tr.on { background: #1d1810; }
   .ticker .tk-run { animation: none; }
   .title-bg i { animation: none; opacity: .7; }
 }
+
+/* ==========================================================================
+   THE PRESIDENCY
+   ========================================================================== */
+
+/* Thirteen weeks of presidential time, spent visibly. */
+.weekbar { display: flex; gap: 3px; margin-bottom: 10px; }
+.weekbar i {
+  flex: 1; height: 6px; border-radius: 2px; display: block;
+  background: var(--gold); opacity: .85;
+}
+.weekbar i.used { background: var(--bg-4); opacity: 1; }
+.done-list {
+  font-size: 11px; color: var(--text-mute); margin-bottom: 11px;
+  padding-bottom: 9px; border-bottom: 1px solid var(--line);
+}
+
+.act-group {
+  font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--text-mute); margin: 14px 0 6px;
+  padding-bottom: 4px; border-bottom: 1px solid var(--line);
+}
+.act-group:first-child { margin-top: 0; }
+.prov .blocked { font-size: 10.5px; color: var(--amber); margin-top: 4px; }
+.prov .fig .wk { color: var(--gold); font-size: 10.5px; }
+
+/* Outcome figures are stated, never judged: whether fewer people in federal
+   prison is an improvement is the argument the game exists to have. */
+.mono.outcome { color: var(--text); font-size: 12.5px; font-weight: 600; }
+.out-tag {
+  font-family: var(--mono); font-size: 9.5px; padding: 2px 6px;
+  border-radius: 3px; border: 1px solid var(--line-2); color: var(--text-dim);
+  background: #0c111a; white-space: nowrap;
+}
+.out-tag b { color: var(--text); font-weight: 700; }
+.prov .outs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+/* The policy comes before the politics, and reads like prose rather than a tag. */
+.prov .does { font-size: 11.5px; color: var(--text-dim); margin-top: 4px; line-height: 1.55; }
+.prov .note b { color: var(--text-mute); font-weight: 600; }
+
+.camp-target {
+  margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line);
+}
+.camp-target .k { font-family: var(--serif); font-size: 17px; margin-right: 9px; }
+.camp-target .v { font-family: var(--mono); font-size: 19px; font-weight: 700; margin-right: 9px; }
+.camp-target .n { font-size: 11.5px; color: var(--text-mute); }
+.camp-target .tiny { margin-top: 5px; line-height: 1.55; }
+.law-row { padding: 6px 0; border-bottom: 1px solid #161e29; }
+.law-row:last-child { border-bottom: none; }
+.law-row .outs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }

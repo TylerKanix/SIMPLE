@@ -206,6 +206,14 @@ const EFFECT_META = {
 function effectSummary(eff, scope) {
   const out = [];
   for (const k in eff) {
+    // `coherence` means two different things in the two acts: message
+    // discipline on the trail, and a norm bent in office, where the engine
+    // converts any negative value into a point of institutional damage.
+    // Displaying it as the campaign meaning would hide the real consequence.
+    if (k === 'coherence' && scope === 'gov') {
+      if (eff[k] < 0) out.push({ key: k, label: 'Damage to the institutions', value: 1, unit: '', good: false });
+      continue;
+    }
     const m = EFFECT_META[k];
     if (!m) continue;
     if (m.applied !== 'both' && m.applied !== scope) continue;
@@ -463,17 +471,36 @@ function dealImpact(caucus, bill, effective, ctx) {
    GOVERNING ACTIONS
    ========================================================================== */
 function govActionPreview(a, g, p) {
-  const comp = g.perk === 'executive' ? 1.15 : 1;
+  const comp = (g.perk === 'executive' ? 1.15 : 1) * (1 + (g.competence || 0) * 0.05);
+  const enjoin = Math.round(Math.max(0.10, 0.42 - (g.judiciary || 0) * 0.07) * 100);
   switch (a.id) {
     case 'bill':   return [{ label: 'Opens the drafting table', value: null }];
     case 'exec':   return [
       { label: 'Enacts', value: Math.round(55 * comp) + '% of the promise', raw: true, good: true },
       { label: 'Base morale', value: 4, good: true },
       { label: 'Opposition energy', value: 5, good: false },
-      { label: 'Struck down', value: '42% chance', raw: true, good: false }];
+      { label: 'Struck down', value: enjoin + '% chance', raw: true, good: false }];
+    case 'reg':    return [
+      { label: 'Enacts', value: Math.round(75 * comp) + '% of the promise', raw: true, good: true },
+      { label: 'Survives a change of president', value: 'yes', raw: true, good: true },
+      { label: 'Vacated on procedure', value: Math.max(4, 16 - (g.judiciary || 0) * 3) + '% chance', raw: true, good: false }];
+    case 'judges': return [
+      { label: 'Every later order struck down', value: '−7pp', raw: true, good: true },
+      { label: 'Base morale', value: 2, good: true },
+      { label: 'Opposition energy', value: 3, good: false }];
+    case 'clemency': return [
+      { label: 'Federal prison population', value: 'about −1.5K', raw: true, good: true },
+      { label: 'Base morale', value: 3, good: true },
+      { label: 'Approval', value: -1.2, good: false }];
     case 'pulpit': return [
       { label: 'Approval', value: +(2.6 * comp + (p.traits.charisma - 50) / 22).toFixed(1), good: true },
       { label: 'Pressure on exposed members', value: 'next bill', raw: true, good: true }];
+    case 'negotiate': return [
+      { label: 'Cross-aisle goodwill', value: Math.round(7 + (p.traits.legislative - 50) / 12), good: true },
+      { label: 'Base morale', value: -1.5, good: false }];
+    case 'cabinet': return [
+      { label: 'Every executive action', value: '+5% stronger', raw: true, good: true },
+      { label: 'Political capital', value: -2, good: false }];
     case 'party':  return [
       { label: 'Base morale', value: 3, good: true },
       { label: 'Midterm seats', value: '+4 per quarter spent', raw: true, good: true }];
@@ -483,6 +510,15 @@ function govActionPreview(a, g, p) {
       { label: 'Gravitas', value: 2, good: true }];
     case 'hold':   return [
       { label: 'Political capital', value: 12, good: true }];
+    case 'fundraise': return [
+      { label: 'Campaign cash', value: '+' + Math.max(10, Math.round(45 + (p.traits.money - 50) * 1.2
+          + (g.baseMorale - 50) * 0.9 + (g.approval - 45) * 1.1)) + 'M', raw: true, good: true }];
+    case 'travel': return [
+      { label: 'Margin in the target state', value: '+0.6 pts', raw: true, good: true },
+      { label: 'Approval', value: 0.4, good: true }];
+    case 'campaign': return [
+      { label: 'Margin in the target state', value: '+1.7 pts', raw: true, good: true },
+      { label: 'Campaign cash', value: '−30M', raw: true, good: false }];
   }
   return [];
 }

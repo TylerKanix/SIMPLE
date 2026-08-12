@@ -28,10 +28,14 @@ delegates decide whether you are electable.
 opponent who repositions to exploit whatever ground you left open. Money and
 days are both scarce. Election night calls state by state from east to west.
 
-**IV — The Government.** Sixteen quarters. Bills are assembled from modular
-provisions and taken to a whip count where caucuses split rather than move as
-blocs. Concessions cost you your promise; refusing them costs you the bill.
-Then midterms, then a referendum on the record.
+**IV — The Government.** Sixteen quarters, each of them thirteen weeks of
+presidential time spent across fourteen kinds of action — a bill is most of a
+quarter, a pardon is an afternoon. Bills are assembled from modular provisions,
+each carrying both its politics and what it actually does, and taken to a whip
+count where caucuses split rather than move as blocs. Concessions cost you your
+promise; refusing them costs you the bill. Then midterms. Then, from the election
+year on, the re-election is fought in the same quarters as the governing, on the
+record being made in them.
 
 ---
 
@@ -114,10 +118,39 @@ members passes it 218–218; dropping the billionaire tax makes it comfortable
 but moves the bill from −1.20 to −0.18, which is no longer the thing you
 promised. Your base notices, and base morale is turnout.
 
+### Every decision is priced before you make it
+
+The engine that resolves a turn is the engine that previews it. To price an
+alternative the game measures the current position, changes exactly one input,
+measures again, and puts the original back — so the figure shown while you are
+deciding is the figure the simulation will use, not a second and friendlier
+model that can drift away from it.
+
+Every stance carries what it does to your primary standing and to the margin in
+the tipping-point state. Campaign actions show the margin they buy in the
+targeted state. Bill provisions show what dropping one costs in House and Senate
+votes and which caucus it was buying. Event choices list their consequences, and
+every consequence listed is one the engine actually applies.
+
+### What the policies do, as distinct from what they cost you
+
+Each provision carries its politics — who wants it, what it costs you — and,
+separately, its policy: the mechanism, and the number a budget office would put
+on it. Those numbers accumulate across a term into a ledger of what actually
+changed in the country: people insured, child poverty, emissions, homes built,
+rents, the federal prison population, crossings, voters registered.
+
+This is the thing a promises-kept tally cannot tell you. A bill gutted to reach
+sixty votes still counts as a bill passed; the ledger is where the difference
+shows up. Outcomes are reported without a verdict — whether fewer people in
+federal prison is an improvement is the argument the game is about.
+
 ### Everything else
 
 Deficits accumulate and fiscal hawks price them in. Executive orders give you
-about half the policy with no votes and a real chance of being enjoined.
+about half the policy with no votes and a real chance of being enjoined —
+lower if you have spent quarters confirming judges, and revoked outright if you
+lose. Rulemakings are slower and costlier and survive a change of president.
 Abolishing the filibuster works exactly once and belongs to whoever holds the
 chamber next. Midterms punish presidents, and worse ones more. The final score
 weighs promises kept against promises broken, the economy you leave, damage to
@@ -143,6 +176,8 @@ index.html      shell
 styles.css      stylesheet
 js/data.js      issues, stances, blocs, states, caucuses, groups, bills, events
 js/sim.js       simulation engine — no DOM
-js/ui.js        rendering helpers — map, bars, meters, modals
+js/analysis.js  decision pricing, dossiers, state files — no DOM
+js/ui.js        rendering helpers — map, bars, charts, meters, modals
 js/main.js      game flow and screens
+build.js        bundles all of the above into one standalone mandate.html
 ```

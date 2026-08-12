@@ -773,3 +773,216 @@ const GOVERNING_EVENTS = [
 ];
 
 const DEPTS = ['Housing', 'Transportation', 'Veterans Affairs', 'Interior', 'Commerce', 'Labor', 'Energy'];
+
+/* ==========================================================================
+   WHAT THE POLICIES ACTUALLY DO
+
+   A provision's `note` is the politics of it — who wants it and what it
+   costs you. That is what you need while whipping votes, and it is all the
+   bill screen used to say. It is not what you need while deciding whether
+   the bill is worth passing.
+
+   `does` is the policy: the mechanism, and the number a budget office would
+   put on it. `out` is that number in a form the game can add up, so that
+   sixteen quarters of legislating produce a country that measurably differs
+   from the one you inherited — and so a bill you gutted to get to sixty
+   votes shows up as a smaller change rather than merely a lower score.
+
+   Figures are plausible caricatures tuned for play, not forecasts.
+   ========================================================================== */
+const OUTCOMES = [
+  { id: 'covered',   name: 'People with health insurance', unit: 'M',  dp: 1 },
+  { id: 'premiums',  name: 'Exchange premiums',            unit: '%',  dp: 0 },
+  { id: 'drugCost',  name: 'Prescription drug costs',      unit: '%',  dp: 0 },
+  { id: 'poverty',   name: 'Child poverty rate',           unit: 'pp', dp: 1 },
+  { id: 'jobs',      name: 'Jobs',                         unit: 'M',  dp: 2 },
+  { id: 'wages',     name: 'Blue-collar wages',            unit: '%',  dp: 1 },
+  { id: 'prices',    name: 'Consumer prices',              unit: '%',  dp: 1 },
+  { id: 'emissions', name: 'Carbon emissions',             unit: '%',  dp: 0 },
+  { id: 'homes',     name: 'Homes built',                  unit: 'M',  dp: 2 },
+  { id: 'rent',      name: 'Rents',                        unit: '%',  dp: 0 },
+  { id: 'crime',     name: 'Violent crime',                unit: '%',  dp: 0 },
+  { id: 'incarc',    name: 'Federal prison population',    unit: 'K',  dp: 0 },
+  { id: 'border',    name: 'Unauthorized crossings',       unit: '%',  dp: 0 },
+  { id: 'legalized', name: 'People given legal status',    unit: 'M',  dp: 1 },
+  { id: 'access',    name: 'Voters registered or protected', unit: 'M', dp: 1 }
+];
+const OUTCOME_BY_ID = Object.fromEntries(OUTCOMES.map(o => [o.id, o]));
+
+const PROVISION_DETAIL = {
+  /* --- The Health Security Act --- */
+  h1: { does: 'Stands up a federally administered plan on every exchange, paying providers Medicare rates plus five percent. Roughly eight million uninsured people take it up, and the competition drags private exchange premiums down about a tenth.',
+        out: { covered: 8, premiums: -11 } },
+  h2: { does: 'Lets Medicare negotiate directly on the hundred highest-spend drugs, with a punitive excise tax on manufacturers who refuse to come to the table. Out-of-pocket drug spending falls about a quarter.',
+        out: { drugCost: -26 } },
+  h3: { does: 'Caps insulin at $35 a month and total annual out-of-pocket drug costs at $2,000. Narrow, cheap, and the only provision here that a voter feels the month it takes effect.',
+        out: { drugCost: -6, covered: 0.3 } },
+  h4: { does: 'Extends premium tax credits up to six times the poverty line — about $180,000 for a family of four — ending the subsidy cliff that made exchange coverage unaffordable just above the cutoff.',
+        out: { covered: 4.5, premiums: -7 } },
+  h5: { does: 'Runs a federal Medicaid look-alike directly in the states that never expanded, covering the roughly four million people in the coverage gap over their governors\' objections.',
+        out: { covered: 3.8, poverty: -0.4 } },
+  h6: { does: 'Bars every dollar in the bill from paying for abortion care. It changes no coverage numbers. It buys three moderate votes and costs you the organized support of your own coalition.',
+        out: {} },
+  h7: { does: 'Lets small employers band together to buy coverage outside state benefit rules and triples HSA contribution limits. Healthy buyers get cheaper plans; the people left in the regulated pool get worse ones.',
+        out: { covered: -1.2, premiums: -4 } },
+
+  /* --- The Revenue and Growth Act --- */
+  t1: { does: 'Takes the corporate rate from 21% back to 28%. Raises about $320B a year — the single largest pay-for available to you — at a modest cost to business investment.',
+        out: { jobs: -0.30, wages: -0.4 } },
+  t2: { does: 'A 20% minimum tax on the total income, including unrealized gains, of households worth over $100M. Roughly 700 families pay it. It will be at the Supreme Court within a year.',
+        out: {} },
+  t3: { does: 'Restores the expanded child tax credit at $3,600 per young child, paid monthly and fully refundable. It cuts child poverty close to in half, which is the largest single thing in this bill.',
+        out: { poverty: -4.1 } },
+  t4: { does: 'Lifts the cap on deducting state and local taxes. It is worth almost nothing below the top decile, and nine suburban members will not vote for the bill without it.',
+        out: {} },
+  t5: { does: 'Lets small firms immediately expense equipment and raises the pass-through deduction. Genuinely useful to Main Street, and it buys a surprising number of Blue Dogs.',
+        out: { jobs: 0.40 } },
+  t6: { does: 'Funds the IRS to audit partnerships and high earners again. Raises about $140B a year without changing a single rate, and becomes an attack ad about armed agents regardless.',
+        out: {} },
+  t7: { does: 'Cuts the top individual rate to 33%. It costs $240B a year and it is the toll if you actually want Freedom Caucus votes on anything in this bill.',
+        out: { jobs: 0.20 } },
+
+  /* --- The Infrastructure and Industry Act --- */
+  i1: { does: 'Reauthorizes the highway program at nearly double and funds transit capital. About 1.4 million construction and supply-chain jobs over the build-out, and every member gets a ribbon.',
+        out: { jobs: 1.40 } },
+  i2: { does: 'Grants and credits for domestic leading-edge fabs. Around 350,000 jobs, heavily concentrated in four states, and a supply chain that no longer runs entirely through the Taiwan Strait.',
+        out: { jobs: 0.35 } },
+  i3: { does: 'Requires Davis-Bacon prevailing wages and project labor agreements on everything the bill funds. Construction wages rise about five percent; so does the cost per mile.',
+        out: { wages: 5.0, prices: 0.3 } },
+  i4: { does: 'Requires domestic content in federally funded projects. Reshores some manufacturing, and raises the price of everything built under the bill by a couple of percent.',
+        out: { jobs: 0.20, prices: 1.5 } },
+  i5: { does: 'Categorical exclusions and a two-year shot clock on environmental review. Unlocks stalled construction of every kind — including, awkwardly for your allies, transmission and housing.',
+        out: { homes: 0.30, jobs: 0.30, emissions: -1 } },
+  i6: { does: 'Fiber to the last mile in counties private carriers will never serve. Cheap, popular, and it buys rural members of both parties for the price of laying cable.',
+        out: { jobs: 0.15 } },
+  i7: { does: 'Builds interregional high-voltage transmission and hardens the grid. The most emissions any single infrastructure line item buys, because renewables that cannot reach a city are decorative.',
+        out: { emissions: -4, jobs: 0.40 } },
+
+  /* --- The Border and Opportunity Act --- */
+  m1: { does: 'A path to citizenship for people brought here as children — about 2.3 million people who currently renew a two-year work permit and hope. It is the moral core of the bill and the reason it dies.',
+        out: { legalized: 2.3, jobs: 0.30 } },
+  m2: { does: 'Uncaps agricultural and essential-worker visas and gives current undocumented farm workers a status track. Farm-state Republicans need this and would rather not say so on camera.',
+        out: { legalized: 1.1, prices: -0.8, jobs: 0.20 } },
+  m3: { does: 'Raises the credible-fear standard and imposes a transit bar. Asylum grants fall sharply and so do crossings. Every advocacy group in your coalition will call it cruel, and mean it.',
+        out: { border: -18 } },
+  m4: { does: 'Sensors, towers, surveillance aircraft, and a number of miles of physical barrier. Real effect on crossings, and the single most photographed line item in the bill.',
+        out: { border: -12 } },
+  m5: { does: 'Mandatory employment verification for every employer in the country. It works — it removes the job magnet — and business hates it far more than restrictionists love it.',
+        out: { border: -22, jobs: -0.20 } },
+  m6: { does: 'Doubles the immigration court bench and funds counsel. Cuts a three-year backlog to under a year, which does more for orderly process than any wall. Nobody campaigns on it.',
+        out: { border: -6 } },
+  m7: { does: 'Sets a statutory floor of 125,000 refugee admissions a year, taking the number out of the president\'s hands. Your base considers it non-negotiable; the Senate considers it fatal.',
+        out: { legalized: 0.5 } },
+
+  /* --- The Energy Transition Act --- */
+  c1: { does: 'Ten-year technology-neutral tax credits for clean generation and storage. The workhorse of the entire climate agenda: about a fourteen percent cut in power-sector emissions, and it survives both reconciliation and the courts.',
+        out: { emissions: -14, jobs: 0.60 } },
+  c2: { does: 'A binding clean-electricity standard rising to 80% by 2035 — a mandate rather than an incentive, and worth more emissions than everything else here combined. The Byrd rule eats it alive.',
+        out: { emissions: -19 } },
+  c3: { does: 'A per-ton fee on methane leaked from oil and gas production. Cheap, immediate, the highest-leverage ton of carbon in the bill, and personally offensive to exactly two senators.',
+        out: { emissions: -6 } },
+  c4: { does: 'Fast-track licensing for advanced nuclear and enhanced geothermal. Splits the environmental coalition down the middle and picks up Republicans who will not vote for a credit with "clean" in the name.',
+        out: { emissions: -5, jobs: 0.20 } },
+  c5: { does: 'Pensions, healthcare, and site remediation for coal communities. It is not climate policy. It is the direct purchase of two specific votes, and it is the honest price of the rest of the bill.',
+        out: { jobs: 0.10 } },
+  c6: { does: 'Mandates new offshore and federal onshore lease sales as a condition of the credits. It adds emissions back. It is also what got the last one of these over the line.',
+        out: { emissions: 7, jobs: 0.20 } },
+  c7: { does: 'A carbon tariff on imported steel, cement, and aluminum. Climate hawks like the emissions; steel unions like the protection; consumers pay for it either way.',
+        out: { emissions: -3, prices: 0.9, jobs: 0.10 } },
+
+  /* --- The Democracy and Ethics Act --- */
+  r1: { does: 'Restores federal preclearance for election-law changes in jurisdictions with a recent record of discrimination. Protects roughly four million voters from rule changes between now and the next census.',
+        out: { access: 4.2 } },
+  r2: { does: 'Requires independent redistricting commissions in every state. It would reshape the House for a generation, and roughly forty of your own members privately hope it fails.',
+        out: { access: 2.0 } },
+  r3: { does: 'Automatic registration at every state DMV and benefits agency, with same-day registration nationwide. Adds close to ten million registered voters, disproportionately young and renting.',
+        out: { access: 9.5 } },
+  r4: { does: 'Forces disclosure of donors above $10,000 to any group spending on elections. Polls at 85% in both parties and passes in neither, because both parties\' money likes the dark.',
+        out: {} },
+  r5: { does: 'Bars members of Congress and their spouses from trading individual stocks. Universally popular with voters, universally resented in the cloakroom, and worth exactly one news cycle.',
+        out: {} },
+  r6: { does: 'Requires photo ID to vote, paired with a free federal card and automatic issuance. Turns out a small number of people still cannot get one. This is the trade that could theoretically get you to sixty.',
+        out: { access: -1.8 } },
+  r7: { does: 'Eighteen-year terms with a nomination every two years. Probably unconstitutional by statute rather than amendment, and definitely a two-year fight that eats everything else.',
+        out: {} },
+
+  /* --- The Public Safety Act --- */
+  p1: { does: 'Grants for 50,000 additional local officers with a community-policing requirement attached. Mayors of every party want it; the evidence says it cuts violent crime a few percent; your left flank calls it a betrayal.',
+        out: { crime: -4 } },
+  p2: { does: 'National use-of-force and misconduct-registry standards tied to federal funding. The bill is dead the moment qualified immunity is mentioned on the floor, and it will be.',
+        out: {} },
+  p3: { does: 'Funds hospital-based and street-outreach violence interruption. Pound for pound the most effective thing in this bill — around a seven percent cut in shootings — and nobody has ever campaigned on it.',
+        out: { crime: -7 } },
+  p4: { does: 'Schedules fentanyl analogues and raises trafficking penalties. It passes 91-9 standing on its own, which makes it the vehicle everything else in this bill rides on.',
+        out: { incarc: 12, crime: -1 } },
+  p5: { does: 'Funds reentry housing and jobs programs and expands federal expungement. Releases about sixty thousand people and cuts recidivism enough to show up in the crime numbers.',
+        out: { incarc: -60, crime: -1 } },
+  p6: { does: 'Mandatory minimums for repeat federal offenses. Adds a hundred and forty thousand people to federal prisons over a decade for a small, lagging crime effect. It buys the Freedom Caucus.',
+        out: { incarc: 140, crime: -2 } },
+
+  /* --- The Housing Abundance Act --- */
+  z1: { does: 'Overrides local single-family-only zoning within half a mile of transit as a condition of federal transportation money. The single most effective provision in the bill — about 1.6 million homes — and every local official in America will revolt.',
+        out: { homes: 1.60, rent: -9 } },
+  z2: { does: 'Takes Section 8 from a lottery to an entitlement for everyone eligible. Immediate, direct relief to about two million households; landlord acceptance is the catch, and rents drift up where supply is fixed.',
+        out: { poverty: -1.2, rent: 2 } },
+  z3: { does: 'Roughly doubles the low-income housing tax credit allocation. The bipartisan default: slow, expensive per unit, and it does actually build.',
+        out: { homes: 0.70 } },
+  z4: { does: 'A refundable credit for first-time buyers. Extremely popular, and every economist will tell you that subsidizing demand into fixed supply mostly raises the price.',
+        out: { homes: 0.10, prices: 0.6, rent: 1 } },
+  z5: { does: 'A national cap on annual rent increases. Cuts rents hard for people who already have a lease and quietly reduces what gets built for everyone who does not. It will not get fifty votes.',
+        out: { rent: -12, homes: -0.40 } },
+  z6: { does: 'Exempts infill housing from federal environmental review. Cheap, effective, and a direct hit on an allied group that will sue you over it within the week.',
+        out: { homes: 0.50 } }
+};
+
+/* Fold the policy detail into the bills themselves. Keeping it in a separate
+   table means the legislative data stays readable as legislative data. */
+BILLS.forEach(b => b.provisions.forEach(p => Object.assign(p, PROVISION_DETAIL[p.id] || { does: '', out: {} })));
+
+/* More weather for a longer term. Sixteen quarters of eight events repeats
+   fast; these widen the range of what a year in office can throw at you, and
+   every effect key below is one the engine actually reads. */
+GOVERNING_EVENTS.push(
+  { id: 'strike', title: 'A National Rail Strike',
+    text: 'Ninety thousand workers walk at midnight. The Railway Labor Act lets you impose a contract and end it by Thursday; the unions who knocked doors for you are asking whether you will.',
+    choices: [
+      { label: 'Impose the contract. Keep the freight moving.', eff: { econ: 1, approval: 3, base: -14, loyalty: -6 } },
+      { label: 'Stay out of it and let them bargain', eff: { econ: -1, approval: -4, base: 10 } },
+      { label: 'Force the carriers to the table personally', eff: { capital: -12, base: 6, bipartisan: -5, approval: 1 } }
+    ] },
+  { id: 'pandemic', title: 'A Novel Respiratory Virus',
+    text: 'Forty cases in three states and a doubling time your public health people describe as "concerning." Everything you do now will look like an overreaction if it works.',
+    choices: [
+      { label: 'Move early and hard', eff: { econ: -1, approval: -4, deficit: 220, capital: -10 } },
+      { label: 'Fund the response, avoid restrictions', eff: { deficit: 90, approval: 1, capital: -4 } },
+      { label: 'Leave it to the states', eff: { approval: -2, oppEnergy: 6, base: -6 } }
+    ] },
+  { id: 'leak', title: 'A Cable Leaks',
+    text: 'A verbatim transcript of your call with an allied head of government is on a news site. The quotes are accurate and unflattering, and the leak came from inside the building.',
+    choices: [
+      { label: 'Order a leak investigation', eff: { capital: -6, coherence: -1, oppEnergy: 4 } },
+      { label: 'Own the substance in public', eff: { approval: -2, coherence: 3, bipartisan: -3 } },
+      { label: 'Call the leader and apologize privately', eff: { approval: -1, capital: -3, hawks: 2 } }
+    ] },
+  { id: 'primaryChallenge', title: 'A Primary Challenger Files',
+    text: 'A member of your own party with a national following has filed paperwork in New Hampshire. They will not win. They will spend a year explaining to your voters what you failed to do.',
+    choices: [
+      { label: 'Ignore them entirely', eff: { base: -6, oppEnergy: 3 } },
+      { label: 'Move toward them on the agenda', eff: { base: 11, capital: -10, approval: -2 } },
+      { label: 'Have the party close ranks and shut it down', eff: { base: -9, capital: -8, loyalty: 8 } }
+    ] },
+  { id: 'debtCeiling', title: 'The Debt Ceiling',
+    text: 'Treasury runs out of extraordinary measures in five weeks. The opposition wants a decade of caps; your own leadership wants you to mint a coin and dare the courts.',
+    choices: [
+      { label: 'Cut the deal. Take the caps.', eff: { approval: 4, base: -12, capital: -8, econ: -1 } },
+      { label: 'Invoke the Fourteenth Amendment', eff: { base: 12, courtRisk: 1, oppEnergy: 14, approval: -3 } },
+      { label: 'Refuse to negotiate and let them blink', eff: { econ: -1, approval: -5, capital: -6, base: 8 } }
+    ] },
+  { id: 'nobel', title: 'An Unexpected Peace',
+    text: 'Two years of quiet work by your envoy produces a signing ceremony nobody predicted. The credit is genuinely shared, and the podium only fits one person.',
+    choices: [
+      { label: 'Take the podium', eff: { approval: 6, hawks: 3, bipartisan: -2 } },
+      { label: 'Put the envoy and the parties out front', eff: { approval: 3, bipartisan: 7, capital: 5 } },
+      { label: 'Spend the moment pushing the treaty through the Senate', eff: { capital: -10, bipartisan: 10, approval: 2 } }
+    ] }
+);

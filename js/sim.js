@@ -294,11 +294,18 @@ function makeCandidate(o) {
   return c;
 }
 
-/* Call after any change to a candidate's platform, traits, or bonuses. */
+/* Call after any change to a candidate's platform, traits, or bonuses.
+
+   Base morale is derived from the platform only while the platform is still
+   being written. Once it is locked, morale becomes a live quantity that
+   rallies, gaffes, running mates, deals and defeats all move — and
+   recomputing it here would silently throw every one of those away. It did:
+   any handler that adjusted morale and then refreshed the candidate, which is
+   most of them, was reverting its own effect on the next line. */
 function refreshCandidate(c) {
   c.uMap = blocUtilityMap(c);
   c.uMapPrim = primaryUtilityMap(c);
-  c.baseMorale = baseMoraleFromPlatform(c);
+  if (c.moraleFromPlatform !== false) c.baseMorale = baseMoraleFromPlatform(c);
   return c;
 }
 
@@ -715,6 +722,32 @@ function groupPressure(bill, selectedIds) {
   }
   detail.sort((a, b) => Math.abs(b.reaction) - Math.abs(a.reaction));
   return { boosts, detail };
+}
+
+/* ==========================================================================
+   OUTCOMES
+   What a presidency did, as distinct from what the country thought of it.
+   A promise-kept tally cannot tell the difference between a bill that passed
+   whole and the same bill gutted to reach sixty votes; these numbers can.
+   ========================================================================== */
+function addOutcomes(g, out, scale) {
+  if (!out) return;
+  const s = scale === undefined ? 1 : scale;
+  for (const k in out) g.outcomes[k] = (g.outcomes[k] || 0) + out[k] * s;
+}
+
+/* An order or a rule is policy without a bill, so there are no provisions to
+   read outcomes off. Approximate it: take the bill covering that issue, keep
+   the provisions pointing the way the president promised, and apply a share
+   scaled by how far the promise went and how much of it survives contact. */
+function applyIssueOutcomes(g, issueId, target, scale) {
+  const bill = BILLS.find(b => b.issue === issueId);
+  if (!bill || !target) return;
+  const dir = Math.sign(target);
+  const provs = bill.provisions.filter(p => Math.sign(p.pos) === dir);
+  if (!provs.length) return;
+  const share = scale * Math.min(1, Math.abs(target) / 2) / Math.max(1, provs.length / 2.2);
+  for (const pv of provs) addOutcomes(g, pv.out, share);
 }
 
 /* ==========================================================================

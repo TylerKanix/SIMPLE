@@ -68,8 +68,14 @@ function renderTopbar() {
   } else if ((G.screen === 'govern' || G.screen === 'bill') && G.gov && G.gov.congress) {
     const g = G.gov;
     out += statBlock('Quarter', `${g.quarter}/16`);
+    out += statBlock('Weeks', `${g.weeks}/${QUARTER_WEEKS}`, g.weeks ? '' : 'warn');
     out += statBlock('Approval', Math.round(g.approval), g.approval >= 50 ? 'good' : g.approval < 42 ? 'bad' : 'warn');
     out += statBlock('Capital', Math.round(g.capital), g.capital >= 25 ? 'good' : g.capital < 10 ? 'bad' : '');
+    if (g.camp) {
+      out += statBlock('Proj. EV', g.camp.proj ? g.camp.proj.evP : '—',
+        g.camp.proj && g.camp.proj.evP >= 270 ? 'good' : 'bad');
+      out += statBlock('Camp. Cash', money(g.campFunds), g.campFunds < 30 ? 'bad' : '');
+    }
     out += statBlock('House', `${g.congress.house.P}–${g.congress.house.O}`, g.congress.house.P >= 218 ? 'good' : 'bad');
     out += statBlock('Senate', `${g.congress.senate.P}–${g.congress.senate.O}`, g.congress.senate.P >= 50 ? 'good' : 'bad');
     out += statBlock('Base', Math.round(g.baseMorale), g.baseMorale < 45 ? 'bad' : g.baseMorale > 62 ? 'good' : '');
@@ -664,6 +670,8 @@ function beginPrimary() {
   };
   G.player.id = 'player';
   G.player.organization = 15;
+  // The platform is locked; from here morale is something that happens to you.
+  G.player.moraleFromPlatform = false;
   logMsg(`${p.name} announces for president.`, 'big', 'ANNOUNCEMENT');
   G.screen = 'primary';
   render();
@@ -1214,10 +1222,11 @@ function scrGeneral(el) {
 
 /* Two generic nominees on the current map: the yardstick every "you are
    running ahead of / behind where a normal candidate would be" figure uses. */
-function genericBaseline(partyId) {
+function genericBaseline(partyId, env) {
   const gP = GENERIC[partyId], gO = GENERIC[partyId === 'D' ? 'R' : 'D'];
+  const e = env || G.env;
   const out = {};
-  for (const st of STATES) out[st.abbr] = stateResult(st, gP, gO, G.env, null).margin;
+  for (const st of STATES) out[st.abbr] = stateResult(st, gP, gO, e, null).margin;
   return out;
 }
 
@@ -1475,6 +1484,32 @@ async function finishNight() {
   const r = G.general.result, p = G.player;
   const won = r.evP >= 270;
   const pop = r.popular;
+
+  // The second election ends the game rather than starting a term.
+  if (G.general.reelection) {
+    const g = G.gov;
+    await showModal({
+      kicker: 'Four Years Later', title: won ? `${p.name} Is Re-Elected` : `${G.opp2.name} Wins`,
+      text: `<b>${r.evP}</b> to <b>${r.evO}</b> in the electoral college; ${pct(pop, 1)} of the two-party vote.
+        Tipping-point state: <b>${esc(r.tipping.name)}</b> at ${sgn(r.tipping.margin * 100, 1)}.<br><br>
+        ${won
+          ? 'The country renews the contract. Whatever you did not finish, you now have to finish with a weaker hand and less time.'
+          : 'The country declines to renew the contract. Every rule you wrote survives until someone runs the process in reverse; everything you did by executive order ends on January 20th.'}`,
+      choices: [{ label: 'The verdict of history →' }]
+    });
+    // An order is a lease on policy. A statute is not.
+    if (!won) {
+      // Reverse exactly what each order was still delivering — an order that
+      // spent three years enjoined was not delivering the whole of it.
+      for (const l of g.laws) if (l.exec) {
+        g.enacted[l.issue] = 0;
+        applyIssueOutcomes(g, l.issue, g.platform.positions[l.issue], -(l.outScale || 0.5));
+      }
+      logMsg('Every executive order is revoked in the first week of the next administration.', 'bad', 'JAN 20');
+    }
+    G.screen = 'final';
+    return render();
+  }
   await showModal({
     kicker: won ? 'The Networks Call It' : 'The Concession',
     title: won ? `${p.name} Is Elected President` : `${G.opp.name} Wins`,
@@ -1525,7 +1560,13 @@ function beginGovernment(result) {
     natMargin,
     result,
     history: [],
-    actionTaken: false
+    weeks: QUARTER_WEEKS,
+    done: [],              // what you spent this quarter's weeks on
+    outcomes: {},          // what has actually changed in the country
+    judiciary: 0,          // friendly benches: executive action survives longer
+    competence: 0,         // a cabinet that returns calls
+    camp: null,            // the re-election campaign, once there is one
+    campFunds: 0
   };
   G.gov.capital = quarterlyCapital(G.gov);
   G.gov.history.push({ q: 0, approval: G.gov.approval, econ: G.gov.econ, laws: 0 });
@@ -1533,27 +1574,70 @@ function beginGovernment(result) {
   // from someone who wants their appointment.
   if (p.debts) {
     G.gov.capital = Math.max(2, G.gov.capital - p.debts * 6);
-    logMsg(`${p.debts} commitment${p.debts === 1 ? '' : 's'} made during the primary come due before you are sworn in.`, 'bad', 'TRANSITION');
+    logMsg(p.debts === 1
+      ? 'A commitment made during the primary comes due before you are sworn in.'
+      : `${p.debts} commitments made during the primary come due before you are sworn in.`,
+      'bad', 'TRANSITION');
   }
   logMsg(`Inauguration. ${congress.house.P}–${congress.house.O} House, ${congress.senate.P}–${congress.senate.O} Senate.`, 'big', 'JAN 20');
   G.screen = 'govern';
   render();
 }
 
+/* ==========================================================================
+   THE QUARTER
+   A president does not get one thing done in three months, and being allowed
+   only one made every quarter the same shrug. The constraint is time: a
+   quarter is thirteen weeks of it, and everything below is priced in weeks as
+   well as in capital. A major bill is most of a quarter. A pardon is an
+   afternoon. What you cannot do is all of it.
+   ========================================================================== */
+const QUARTER_WEEKS = 13;
+
 const GOV_ACTIONS = [
-  { id: 'bill',   name: 'Move a Bill to the Floor', cost: 0,
+  { id: 'bill', name: 'Move a Bill to the Floor', cost: 0, weeks: 6, group: 'Legislative',
     desc: 'Draft it, whip it, and find out what your majority is actually worth.' },
-  { id: 'exec',   name: 'Sign an Executive Order', cost: 8,
+  { id: 'reg', name: 'Direct an Agency Rulemaking', cost: 11, weeks: 5, group: 'Executive',
+    desc: 'Notice, comment, and a rule with an administrative record behind it. Slower than an order and far harder for a court to erase.' },
+  { id: 'exec', name: 'Sign an Executive Order', cost: 8, weeks: 3, group: 'Executive',
     desc: 'Immediate, unilateral, half as strong, and one adverse ruling from nothing.' },
-  { id: 'pulpit', name: 'National Address & Tour', cost: 10,
-    desc: 'Spend capital to move approval and pressure exposed members.' },
-  { id: 'party',  name: 'Party Building & Fundraising', cost: 6,
-    desc: 'Recruit candidates and bank money. Pays off at the midterms.' },
-  { id: 'summit', name: 'Foreign Summit', cost: 9,
-    desc: 'Gravitas, a bump with hawks, and two weeks not spent on the agenda.' },
-  { id: 'hold',   name: 'Consolidate and Wait', cost: 0,
-    desc: 'Bank political capital. Sometimes the correct play, never the satisfying one.' }
+  { id: 'judges', name: 'Confirm Judicial Nominees', cost: 7, weeks: 3, group: 'Executive',
+    desc: 'Fill the district and circuit vacancies. Everything you sign afterwards lands in front of judges somebody appointed.' },
+  { id: 'clemency', name: 'Clemency and Pardons', cost: 3, weeks: 1, group: 'Executive',
+    desc: 'A stroke of the pen that empties cells. Your base notices. So does every prosecutor in the country.' },
+  { id: 'pulpit', name: 'National Address and Tour', cost: 10, weeks: 3, group: 'Political',
+    desc: 'Spend capital to move approval and pressure the members whose seats you carried.' },
+  { id: 'negotiate', name: 'Meet the Opposition Leader', cost: 5, weeks: 2, group: 'Political',
+    desc: 'A private hour in the residence. Cross-aisle goodwill is the only thing that ever gets you to sixty.' },
+  { id: 'cabinet', name: 'Cabinet Shake-Up', cost: 4, weeks: 2, group: 'Political',
+    desc: 'Replace the weak link. Costs you a confirmation fight and buys you a department that returns calls.' },
+  { id: 'summit', name: 'Foreign Summit', cost: 9, weeks: 4, group: 'Political',
+    desc: 'Gravitas, a bump with security voters, and a month not spent on the agenda.' },
+  { id: 'party', name: 'Party Building and Recruitment', cost: 6, weeks: 3, group: 'Political',
+    desc: 'Recruit candidates and bank money for the committees. Pays off at the midterms.' },
+  { id: 'hold', name: 'Consolidate and Wait', cost: 0, weeks: 2, group: 'Political',
+    desc: 'Bank political capital. Sometimes the correct play, never the satisfying one.' },
+  { id: 'fundraise', name: 'Re-Election Finance', cost: 0, weeks: 2, group: 'Re-Election',
+    desc: 'Call time and closed-door dinners for your own campaign. Legal, tedious, and the reason you can afford a map.' },
+  { id: 'travel', name: 'Official Travel', cost: 3, weeks: 2, group: 'Re-Election',
+    desc: 'Government business, in a state you happen to need. Air Force One is the best backdrop in politics.' },
+  { id: 'campaign', name: 'Campaign Swing', cost: 0, weeks: 3, group: 'Re-Election',
+    desc: 'Four states in three days on the campaign\'s dime. The only thing that moves a map at scale.' }
 ];
+
+/* Which of them you can actually reach for this quarter. */
+function actionAvailable(a, g) {
+  if (a.group === 'Re-Election') {
+    if (a.id === 'fundraise') return g.quarter >= 9;   // you may raise before you run
+    return !!g.camp;                                   // the rest need a campaign
+  }
+  return true;
+}
+function actionBlockedReason(a, g) {
+  if (a.group !== 'Re-Election') return null;
+  if (a.id === 'fundraise') return 'Available once the midterms are behind you.';
+  return `Available in the election year, from Q13.`;
+}
 
 function scrGovern(el) {
   const g = G.gov, p = G.player;
@@ -1566,19 +1650,33 @@ function scrGovern(el) {
       ['Approval', `${Math.round(g.approval)}%`, g.approval >= 50 ? 'g' : g.approval < 42 ? 'r' : ''],
       ['Laws enacted', g.laws.length],
       ['Capital', Math.round(g.capital)],
-      g.filibusterGone ? ['Senate', 'filibuster abolished', 'r'] : null
+      g.filibusterGone ? ['Senate', 'filibuster abolished', 'r'] : null,
+      g.camp ? ['Re-election', `${esc(G.opp2.name)} · ${g.camp.proj ? g.camp.proj.evP + ' EV' : '—'}`,
+        g.camp.proj && g.camp.proj.evP >= 270 ? 'g' : 'r'] : null
     ], 'Governing')}
     <div class="split">
       <div>
         <div class="panel">
           <div class="panel-head"><h2>The Quarter</h2><span class="spacer"></span>
-            <span class="sub">${g.actionTaken ? 'action used' : '1 major action available'}</span></div>
+            <span class="sub">${g.weeks} of ${QUARTER_WEEKS} weeks unspent</span></div>
+          <div class="weekbar" title="${g.weeks} weeks of presidential time left this quarter">
+            ${Array.from({ length: QUARTER_WEEKS }, (_, i) =>
+              `<i class="${i < QUARTER_WEEKS - g.weeks ? 'used' : ''}"></i>`).join('')}
+          </div>
+          ${g.done.length ? `<div class="done-list">This quarter: ${g.done.map(d => esc(d)).join(' · ')}</div>` : ''}
           <div id="actions"></div>
           <div class="btn-row" style="margin-top:12px;border-top:1px solid var(--line);padding-top:13px">
-            <button class="btn primary" id="endq">Advance to Q${g.quarter + 1} →</button>
-            <span class="muted small">${Math.round(g.capital)} political capital on hand</span>
+            <button class="btn primary" id="endq">${g.quarter >= 16 ? 'To the Election →' : `Advance to Q${g.quarter + 1} →`}</button>
+            <span class="muted small">${Math.round(g.capital)} political capital · ${g.weeks} week${g.weeks === 1 ? '' : 's'} left</span>
           </div>
         </div>
+        ${g.camp ? `<div class="panel">
+          <div class="panel-head"><h2>The Re-Election</h2><span class="spacer"></span>
+            <span class="sub">${money(g.campFunds)} on hand · ${esc(g.camp.target)} targeted</span></div>
+          <div id="campmap"></div>
+          <div id="campev" style="margin-top:13px"></div>
+          <div id="camptarget"></div>
+        </div>` : ''}
         <div class="panel">
           <div class="panel-head"><h2>The Agenda</h2><span class="sub">promises against the record</span></div>
           <table><thead><tr><th>Issue</th><th>You Promised</th><th>Enacted</th><th class="num">Status</th></tr></thead>
@@ -1586,6 +1684,10 @@ function scrGovern(el) {
         </div>
       </div>
       <div class="rail">
+        <div class="panel">
+          <div class="panel-head"><h2>The Country</h2><span class="sub">what has actually changed</span></div>
+          <div id="outcomes"></div>
+        </div>
         <div class="panel">
           <div class="panel-head"><h2>Congress</h2><span class="sub">caucus by caucus</span></div>
           <div id="congress"></div>
@@ -1602,19 +1704,46 @@ function scrGovern(el) {
     </div></div>`));
 
   const aw = el.querySelector('#actions');
+  let lastGroup = null;
   for (const a of GOV_ACTIONS) {
-    const ok = !g.actionTaken && g.capital >= a.cost;
+    const avail = actionAvailable(a, g);
+    const ok = avail && g.capital >= a.cost && g.weeks >= a.weeks;
+    if (!avail && a.group === 'Re-Election' && a.id !== 'fundraise' && g.quarter < 9) continue;
+    if (a.group !== lastGroup) {
+      lastGroup = a.group;
+      aw.appendChild(h(`<div class="act-group">${esc(a.group)}</div>`));
+    }
     const pv = govActionPreview(a, g, p);
+    const why = !avail ? actionBlockedReason(a, g)
+      : g.weeks < a.weeks ? `Needs ${a.weeks} weeks; ${g.weeks} left.`
+      : g.capital < a.cost ? `Needs ${a.cost} capital.` : null;
     const row = h(`<div class="prov act ${ok ? '' : 'stripped'}">
-      <div><div class="nm">${esc(a.name)}</div><div class="note">${esc(a.desc)}</div></div>
+      <div><div class="nm">${esc(a.name)}</div><div class="note">${esc(a.desc)}</div>
+        ${why ? `<div class="blocked">${esc(why)}</div>` : ''}</div>
       <div class="gain">${pv.map(x => x.value === null
         ? `<span class="muted tiny">${esc(x.label)}</span>`
         : `<span class="eff-tag ${x.good ? 'good' : 'bad'}">${esc(x.label)}
              <b>${x.raw ? esc(String(x.value)) : (x.value > 0 ? '+' : '−') + Math.abs(x.value)}</b></span>`).join('')}</div>
-      <div class="fig">${a.cost ? a.cost + ' cap' : '—'}</div></div>`);
+      <div class="fig"><span class="wk">${a.weeks} wk</span><br>${a.cost ? a.cost + ' cap' : '—'}</div></div>`);
     if (ok) row.onclick = () => doGovAction(a);
     aw.appendChild(row);
   }
+
+  // What has actually changed in the country, as distinct from what it thinks
+  // of you. Presented without a verdict: whether fewer crossings or fewer
+  // people in prison is an improvement is the argument the game is about.
+  const oc = el.querySelector('#outcomes');
+  const moved = OUTCOMES.filter(o => Math.abs(g.outcomes[o.id] || 0) > 0.004);
+  oc.innerHTML = moved.length
+    ? `<div class="imp-list">${moved.map(o => {
+        const v = g.outcomes[o.id];
+        return `<div class="drow"><span class="dk">${esc(o.name)}</span>
+          <span class="mono outcome">${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(o.dp)}${o.unit}</span></div>`;
+      }).join('')}</div>
+      <div class="tiny muted" style="margin-top:9px">Measured against the country you inherited. Passing a
+        watered-down bill moves these less — which is the part a promise-kept tally cannot tell you.</div>`
+    : `<div class="impact-idle"><p>Nothing has changed yet. Signing something is the only thing that moves
+        these numbers — an executive order moves them about half as far, and only while it survives.</p></div>`;
 
   const ag = el.querySelector('#agenda');
   for (const iss of ISSUES) {
@@ -1669,6 +1798,29 @@ function scrGovern(el) {
       <div><span class="k">Institutions</span><span class="v ${g.institutionalDamage > 4 ? 'r' : ''}">${g.institutionalDamage}</span></div>
     </div>`;
 
+  // The re-election, run from the Oval Office. Same map, same engine, same
+  // state files — the difference is that the record you are defending is the
+  // one sitting in the other panels on this screen.
+  if (g.camp) {
+    const c = g.camp;
+    const elast = stateElasticities(p, G.opp2, g.env2, c.efforts);
+    renderMap(el.querySelector('#campmap'), c.proj.states, {
+      playerParty: p.partyId, target: c.target, efforts: c.efforts, elasticity: elast,
+      onClick: abbr => { c.target = abbr; render(); }
+    });
+    renderEvBar(el.querySelector('#campev'), c.proj.evP, c.proj.evO, p.partyId);
+    const t = stateProfile(c.target, p, G.opp2, g.env2, c.efforts, elast);
+    el.querySelector('#camptarget').innerHTML = `
+      <div class="camp-target">
+        <div><span class="k">${esc(t.st.name)}</span>
+          <span class="v ${t.margin > 0 ? 'g' : 'r'}">${sgn(t.margin, 1)}</span>
+          <span class="n">${esc(leanLabel(t.margin))} · ${t.st.ev} EV · ${t.spent || 'nothing'} invested</span></div>
+        <div class="tiny muted">A campaign swing here is worth about
+          ${sgn(t.adValue * 1.6, 2)} points at the current level of saturation.
+          Your approval and the economy set the ground you are running on; the map only adjusts it.</div>
+      </div>`;
+  }
+
   renderLog(el.querySelector('#log'));
   el.querySelector('#endq').onclick = () => endQuarter();
 }
@@ -1689,8 +1841,9 @@ async function doGovAction(a) {
   }
 
   g.capital -= a.cost;
-  g.actionTaken = true;
-  const comp = g.perk === 'executive' ? 1.15 : 1;
+  g.weeks -= a.weeks;
+  g.done.push(a.name);
+  const comp = (g.perk === 'executive' ? 1.15 : 1) * (1 + g.competence * 0.05);
 
   if (a.id === 'exec') {
     const idx = await showModal({
@@ -1701,24 +1854,102 @@ async function doGovAction(a) {
       })).concat([{ label: 'Never mind' }])
     });
     const pool = ISSUES.filter(i => g.enacted[i.id] === undefined).slice(0, 6);
-    if (idx >= pool.length) { g.capital += a.cost; g.actionTaken = false; return render(); }
+    if (idx >= pool.length) { g.capital += a.cost; g.weeks += a.weeks; g.done.pop(); return render(); }
     const iss = pool[idx];
     const target = g.platform.positions[iss.id];
     const strength = 0.55 * comp;
     const enactedPos = target * strength;
     g.enacted[iss.id] = enactedPos;
-    g.laws.push({ name: `Executive Order on ${iss.name}`, issue: iss.id, pos: enactedPos, exec: true });
+    const order = { name: `Executive Order on ${iss.name}`, issue: iss.id, pos: enactedPos, exec: true, outScale: 0.5 };
+    g.laws.push(order);
+    applyIssueOutcomes(g, iss.id, target, 0.5);
     g.baseMorale = clamp(g.baseMorale + 4, 10, 95);
     g.oppEnergy += 5;
     logMsg(`Executive order signed on ${iss.name}. Effective immediately; challenged by 3pm.`, 'good', `Q${g.quarter}`);
-    if (rnd() < 0.42) {
+    // Benches you have filled are benches that do not enjoin you on a Friday.
+    if (rnd() < Math.max(0.10, 0.42 - g.judiciary * 0.07)) {
       await showModal({ kicker: 'The Courts', title: 'Enjoined',
         text: `A district judge stays your ${esc(iss.name.toLowerCase())} order nationwide. It will be at the Supreme Court in eighteen months, which is to say after the midterms.`,
         choices: [{ label: 'Appeal' }] });
       g.enacted[iss.id] = enactedPos * 0.35;
+      applyIssueOutcomes(g, iss.id, target, -0.325);
+      order.outScale -= 0.325;
       g.approval -= 2;
       logMsg(`The ${iss.name} order is enjoined.`, 'bad', `Q${g.quarter}`);
     }
+  } else if (a.id === 'reg') {
+    // A rule is slower and costlier than an order and it does not evaporate.
+    const pool = ISSUES.filter(i => g.enacted[i.id] === undefined);
+    if (!pool.length) { g.capital += a.cost; g.weeks += a.weeks; g.done.pop();
+      await showModal({ title: 'Nothing Left to Regulate', text: 'Every issue on your platform has already been addressed one way or another.', choices: [{ label: 'Back' }] });
+      return render(); }
+    const idx = await showModal({
+      kicker: 'The Federal Register', title: 'Direct a Rulemaking',
+      text: 'Eighteen months of notice and comment, an administrative record built to survive review, and a rule that the next president has to run the same process in reverse to undo. Roughly three quarters of the policy, and it holds.',
+      choices: pool.slice(0, 6).map(i => ({
+        label: i.name, hint: STANCES[i.id].find(s => s.p === g.platform.positions[i.id]).label
+      })).concat([{ label: 'Never mind' }])
+    });
+    if (idx >= Math.min(6, pool.length)) { g.capital += a.cost; g.weeks += a.weeks; g.done.pop(); return render(); }
+    const iss = pool[idx];
+    const target = g.platform.positions[iss.id];
+    const enactedPos = target * 0.75 * comp;
+    g.enacted[iss.id] = enactedPos;
+    g.laws.push({ name: `${iss.name} Rule`, issue: iss.id, pos: enactedPos, rule: true });
+    applyIssueOutcomes(g, iss.id, target, 0.7);
+    g.oppEnergy += 3;
+    logMsg(`Final rule published on ${iss.name}. It took a year and it will outlast you.`, 'good', `Q${g.quarter}`);
+    if (rnd() < Math.max(0.04, 0.16 - g.judiciary * 0.03)) {
+      await showModal({ kicker: 'The Courts', title: 'Vacated and Remanded',
+        text: 'A circuit panel finds the record inadequate under the Administrative Procedure Act. The agency can try again, with a better record and eighteen more months.',
+        choices: [{ label: 'Send it back to the agency' }] });
+      g.enacted[iss.id] = enactedPos * 0.5;
+      applyIssueOutcomes(g, iss.id, target, -0.35);
+      logMsg(`The ${iss.name} rule is vacated on procedure.`, 'bad', `Q${g.quarter}`);
+    }
+  } else if (a.id === 'judges') {
+    g.judiciary++;
+    g.baseMorale = clamp(g.baseMorale + 2, 10, 95);
+    g.oppEnergy += 3;
+    logMsg(`Eleven district and two circuit judges confirmed. The bench tilts a little further your way.`, 'good', `Q${g.quarter}`);
+  } else if (a.id === 'clemency') {
+    const n = Math.round(rndRange(600, 2400));
+    g.outcomes.incarc = (g.outcomes.incarc || 0) - n / 1000;
+    g.baseMorale = clamp(g.baseMorale + 3, 10, 95);
+    g.approval = clamp(g.approval - 1.2, 8, 92);
+    g.oppEnergy += 4;
+    logMsg(`${n.toLocaleString()} federal sentences commuted. Every US Attorney in the country objects in writing.`, '', `Q${g.quarter}`);
+  } else if (a.id === 'negotiate') {
+    const gain = 7 + (p.traits.legislative - 50) / 12;
+    g.bipartisan = clamp(g.bipartisan + gain, 0, 60);
+    g.baseMorale = clamp(g.baseMorale - 1.5, 10, 95);
+    logMsg(`An hour in the residence with the other leader. No cameras, and sixty votes look marginally less impossible.`, '', `Q${g.quarter}`);
+  } else if (a.id === 'cabinet') {
+    g.competence++;
+    g.capital -= 2;
+    logMsg(`A department gets a new secretary and, eventually, a functioning front office.`, '', `Q${g.quarter}`);
+  } else if (a.id === 'fundraise') {
+    const raise = Math.round(45 + (p.traits.money - 50) * 1.2 + (g.baseMorale - 50) * 0.9 + (g.approval - 45) * 1.1);
+    g.campFunds += Math.max(10, raise);
+    logMsg(`Re-election finance quarter closes at ${money(Math.max(10, raise))}.`, 'good', `Q${g.quarter}`);
+  } else if (a.id === 'travel' || a.id === 'campaign') {
+    const c = g.camp, t = c.target;
+    const isSwing = a.id === 'campaign';
+    const cash = isSwing ? 30 : 0;
+    if (isSwing && g.campFunds < cash) {
+      g.capital += a.cost; g.weeks += a.weeks; g.done.pop();
+      await showModal({ title: 'The Campaign Cannot Pay For It', text: `A swing costs ${money(cash)} and you have ${money(g.campFunds)}. Spend a quarter on finance first.`, choices: [{ label: 'Back' }] });
+      return render();
+    }
+    g.campFunds -= cash;
+    c.efforts[t].persuade += isSwing ? 26 : 9;
+    c.efforts[t].ground += isSwing ? 8 : 4;
+    if (!isSwing) g.approval = clamp(g.approval + 0.4, 8, 92);
+    updateCampProjection();
+    logMsg(isSwing
+      ? `Campaign swing through ${STATE_BY_ABBR[t].name}. Four events, one motorcade, and a local news cycle you own.`
+      : `Official travel to ${STATE_BY_ABBR[t].name} — a plant tour, a check presentation, and a backdrop no challenger can match.`,
+      'good', `Q${g.quarter}`);
   } else if (a.id === 'pulpit') {
     const bump = 2.6 * comp + (p.traits.charisma - 50) / 22;
     g.approval = clamp(g.approval + bump, 8, 92);
@@ -1756,12 +1987,87 @@ async function endQuarter() {
 
   g.history.push({ q: g.quarter, approval: g.approval, econ: g.econ, laws: g.laws.length });
   g.quarter++;
-  g.actionTaken = false;
+  g.weeks = QUARTER_WEEKS;
+  g.done = [];
   g.capital = Math.round(clamp(g.capital * 0.35 + quarterlyCapital(g), 0, 90));
 
   if (g.quarter === 9) await runMidterms();
-  if (g.quarter > 16) return runReelection();
+  if (g.quarter === 13) await beginReelection();
+  // The campaign is not a separate game running alongside this one. Every
+  // quarter of governing re-prices the map you are defending.
+  if (g.camp) refreshCampEnvironment();
+  if (g.quarter > 16) return runReelectionNight();
   render();
+}
+
+/* ==========================================================================
+   THE SECOND ELECTION
+   Fought from the Oval Office, in the same quarters as the governing, on the
+   record being made in them. The old version resolved it in a single modal
+   after the term ended, which meant the last four years of a presidency were
+   played with no idea whether they were helping.
+   ========================================================================== */
+async function beginReelection() {
+  const g = G.gov, p = G.player;
+  const oppParty = p.partyId === 'D' ? 'R' : 'D';
+  const opp2 = genericOpponent(oppParty);
+  opp2.name = (oppParty === 'D' ? 'Gov. ' : 'Sen. ') + personName();
+  opp2.role = 'The Challenger';
+  opp2.blurb = 'Spent two years running against your record in early states while you were running the country. Has the advantage of never having had to sign anything.';
+  g.env2 = { incumbentParty: p.partyId, incumbentPenalty: 0 };
+  refreshCampEnvironment(true);
+  optimizeOpponent(opp2, p, g.env2, 3);
+  G.opp2 = opp2;
+
+  const efforts = {};
+  STATES.forEach(s => efforts[s.abbr] = { persuade: 0, ground: 0, digital: 0 });
+  g.camp = { efforts, target: 'PA', proj: null };
+  updateCampProjection();
+
+  await showModal({
+    kicker: 'The Election Year', title: `${opp2.name} Is the Nominee`,
+    text: `The other party has settled on a challenger, and you are now doing two jobs with the same thirteen weeks a quarter.<br><br>
+      Your record is the campaign: approval is at <b>${Math.round(g.approval)}%</b>, the economy is
+      <b>${sgn(g.econ, 1)}</b>, and on that basis the map has you at
+      <b>${g.camp.proj.evP}</b> electoral votes.<br><br>
+      Official travel, campaign swings, and finance are now on the quarterly menu — but every week
+      spent on them is a week not spent governing, and governing is what moves the number above.`,
+    choices: [{ label: 'Run on the record →' }]
+  });
+  logMsg(`${opp2.name} wins the opposition nomination. The re-election campaign begins.`, 'big', `Q${g.quarter}`);
+}
+
+/* Approval and the economy set the ground the campaign is fought on. */
+function refreshCampEnvironment(init) {
+  const g = G.gov, p = G.player;
+  g.env2.incumbentPenalty = clamp(0.10 - (g.approval - 47) * 0.018 - g.econ * 0.05, -0.24, 0.42);
+  p.baseMorale = g.baseMorale;
+  refreshCandidate(p);
+  if (!init) updateCampProjection();
+}
+
+function updateCampProjection() {
+  const g = G.gov;
+  if (g.camp && G.opp2) g.camp.proj = projectElection(G.player, G.opp2, g.env2, g.camp.efforts);
+}
+
+function runReelectionNight() {
+  const g = G.gov, p = G.player;
+  refreshCampEnvironment();
+  const result = runGeneralElection(p, G.opp2, g.env2, g.camp.efforts);
+  g.reelectionResult = result;
+  g.reelected = result.evP >= 270;
+
+  const col = {};
+  TILE_MAP.forEach(row => row.forEach((a, i) => { if (a) col[a] = i; }));
+  result.order = result.states.slice().sort((a, b) => (col[b.abbr] - col[a.abbr]) || (rnd() - 0.5));
+
+  G.opp = G.opp2;   // the night screen names whoever is in G.opp
+  G.general = { result, called: [], baseline: genericBaseline(p.partyId, g.env2), reelection: true,
+                efforts: g.camp.efforts, week: 10, days: 0, money: g.campFunds, proj: g.camp.proj };
+  G.screen = 'night';
+  render();
+  stepNight();
 }
 
 async function governingEvent() {
@@ -1819,35 +2125,6 @@ async function runMidterms() {
   if (!kept) g.oppEnergy += 14;
 }
 
-async function runReelection() {
-  const g = G.gov, p = G.player;
-  // A referendum on approval and the economy, with a coalition check.
-  const opp2 = genericOpponent(p.partyId === 'D' ? 'R' : 'D');
-  opp2.name = 'The Challenger';
-  // A referendum on the record. Calibrated so that a president at 47 and a
-  // flat economy faces a mild headwind rather than a fourteen-point one.
-  const env2 = {
-    incumbentParty: p.partyId,
-    incumbentPenalty: clamp(0.10 - (g.approval - 47) * 0.018 - g.econ * 0.05, -0.24, 0.42)
-  };
-  optimizeOpponent(opp2, p, env2, 2);
-  p.baseMorale = g.baseMorale;
-  refreshCandidate(p);
-  const efforts = {}; STATES.forEach(s => efforts[s.abbr] = { persuade: 0, ground: 0, digital: 0 });
-  const r = runGeneralElection(p, opp2, env2, efforts);
-  g.reelected = r.evP >= 270;
-  g.reelectionResult = r;
-  await showModal({
-    kicker: 'Four Years Later', title: g.reelected ? 'Re-Elected' : 'Defeated',
-    text: `<b>${r.evP}</b> to <b>${r.evO}</b> in the electoral college; ${pct(r.popular, 1)} of the two-party vote.<br><br>
-      ${g.reelected
-        ? 'The country renews the contract. Whatever you did not finish, you now have to finish with a weaker hand and less time.'
-        : 'The country declines to renew the contract. Everything you passed by executive action ends on January 20th.'}`,
-    choices: [{ label: 'The verdict of history →' }]
-  });
-  G.screen = 'final';
-  render();
-}
 
 /* ==========================================================================
    9. BILL — drafting and whipping
@@ -1904,6 +2181,10 @@ function scrBill(el) {
           </div>
         </div>
         <div class="panel">
+          <div class="panel-head"><h2>If This Becomes Law</h2><span class="sub">as currently drafted</span></div>
+          <div id="billout"></div>
+        </div>
+        <div class="panel">
           <div class="panel-head"><h2>Procedural Tools</h2><span class="sub">${Math.round(g.capital)} capital</span></div>
           <div id="tools"></div>
         </div>
@@ -1929,7 +2210,13 @@ function scrBill(el) {
       <div class="box">${on ? '✓' : ''}</div>
       <div>
         <div class="nm">${esc(pv.name)} ${strippedByByrd ? '<span class="byrd">— STRUCK BY THE BYRD RULE</span>' : ''}</div>
-        <div class="note">${esc(pv.note)}</div>
+        <div class="does">${esc(pv.does)}</div>
+        <div class="note"><b>Politics:</b> ${esc(pv.note)}</div>
+        ${Object.keys(pv.out).length ? `<div class="outs">${Object.entries(pv.out).map(([k, v]) => {
+          const o = OUTCOME_BY_ID[k];
+          return `<span class="out-tag">${esc(o.name)}
+            <b>${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(o.dp)}${o.unit}</b></span>`;
+        }).join('')}</div>` : ''}
         ${movers ? `<div class="movers">${verb} it: ${movers}</div>` : ''}
       </div>
       <div class="votes">
@@ -1980,6 +2267,27 @@ function scrBill(el) {
       vs. your promise <span class="mono">${sgn(promised, 2)}</span>
       ${Math.abs(bs.pos - promised) <= 0.7 ? '<span class="pill green">on promise</span>' : '<span class="pill red">off promise</span>'}</div>`;
 
+  // What the bill in its current shape would actually do. The whip count says
+  // whether it can pass; this says whether it is worth passing, which is the
+  // question a stripped-down bill makes urgent.
+  const totals = {};
+  for (const pv of bs.provs) addOutcomes({ outcomes: totals }, pv.out);
+  const rows = OUTCOMES.filter(o => Math.abs(totals[o.id] || 0) > 0.004);
+  const full = {};
+  for (const pv of bill.provisions) addOutcomes({ outcomes: full }, pv.out);
+  el.querySelector('#billout').innerHTML = rows.length
+    ? `<div class="imp-list">${rows.map(o => {
+        const v = totals[o.id], whole = full[o.id] || 0;
+        const share = whole ? Math.abs(v / whole) : 1;
+        return `<div class="drow"><span class="dk">${esc(o.name)}
+          ${share < 0.92 && Math.sign(v) === Math.sign(whole)
+            ? `<i class="ev-mini">${Math.round(share * 100)}% of the full bill</i>` : ''}</span>
+          <span class="mono outcome">${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(o.dp)}${o.unit}</span></div>`;
+      }).join('')}</div>
+      <div class="tiny muted" style="margin-top:9px">Ten-year cost <span class="mono">${bn(bs.cost * 10)}</span>.
+        Dropping a provision to buy a caucus drops what it was going to do along with it.</div>`
+    : '<div class="impact-idle"><p>As drafted, this bill changes nothing measurable in the country. It may still be worth passing for what it says.</p></div>';
+
   // tools
   const tw = el.querySelector('#tools');
   const tools = [
@@ -2016,9 +2324,17 @@ function scrBill(el) {
   el.querySelector('#shelve').onclick = async () => {
     await showModal({ title: 'Shelve It', text: 'The bill goes back to committee. You keep your capital and lose the quarter.',
       choices: [{ label: 'Shelve it' }, { label: 'Keep working' }] }).then(i => {
-        if (i === 0) { G.gov.actionTaken = true; logMsg(`${bill.name} is pulled from the floor.`, 'bad', `Q${G.gov.quarter}`); G.screen = 'govern'; render(); }
+        if (i === 0) { spendBillWeeks(); logMsg(`${bill.name} is pulled from the floor.`, 'bad', `Q${G.gov.quarter}`); G.screen = 'govern'; render(); }
       });
   };
+}
+
+/* Floor time is charged when the bill leaves the drafting table, however it
+   leaves — a bill pulled from the floor still ate the quarter. */
+function spendBillWeeks() {
+  const g = G.gov, a = GOV_ACTIONS.find(x => x.id === 'bill');
+  g.weeks = Math.max(0, g.weeks - a.weeks);
+  g.done.push(a.name);
 }
 
 function mergeBoosts(a, b) {
@@ -2102,12 +2418,15 @@ async function bringToFloor(wc, bs, effective) {
   const senateFinal = wc.senateYes + Math.round(gauss(0, 1.6));
   const passes = houseFinal >= 218 && senateFinal >= wc.senateNeeded;
 
-  g.actionTaken = true;
+  spendBillWeeks();
   g.billsDone.push(bill.id);
 
   if (passes) {
     g.enacted[bill.issue] = bs.pos;
-    g.laws.push({ name: bill.name, issue: bill.issue, pos: bs.pos, cost: bs.cost, provisions: effective.length });
+    // Only what actually survived to the floor changes anything in the world.
+    for (const pv of bs.provs) addOutcomes(g, pv.out);
+    g.laws.push({ name: bill.name, issue: bill.issue, pos: bs.pos, cost: bs.cost,
+      provisions: effective.length, out: bs.provs.reduce((a, pv) => { addOutcomes({ outcomes: a }, pv.out); return a; }, {}) });
     g.deficit += Math.max(0, bs.cost) * 0.9;
     g.deficit += Math.min(0, bs.cost) * 0.9;
     g.approval = clamp(g.approval + 2.2, 8, 92);
@@ -2173,6 +2492,10 @@ function scrFinal(el) {
         </div>` : ''}
       </div>
       <div class="rail">
+        ${!failed ? `<div class="panel">
+          <div class="panel-head"><h2>The Country You Leave</h2><span class="sub">measured against the one you inherited</span></div>
+          <div id="finalout"></div>
+        </div>` : ''}
         <div class="panel">
           <div class="panel-head"><h2>Promises</h2></div>
           <table><thead><tr><th>Issue</th><th class="num">Outcome</th></tr></thead><tbody id="prom"></tbody></table>
@@ -2216,6 +2539,21 @@ function scrFinal(el) {
     pr.appendChild(h(`<tr><td>${esc(iss.short)}${sig ? ' <span class="pill gold">sig</span>' : ''}</td><td class="num">${v}</td></tr>`));
   }
 
+  const fo = el.querySelector('#finalout');
+  if (fo) {
+    const moved = OUTCOMES.filter(o => Math.abs((g.outcomes || {})[o.id] || 0) > 0.004);
+    fo.innerHTML = moved.length
+      ? `<div class="imp-list">${moved.map(o => {
+          const v = g.outcomes[o.id];
+          return `<div class="drow"><span class="dk">${esc(o.name)}</span>
+            <span class="mono outcome">${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(o.dp)}${o.unit}</span></div>`;
+        }).join('')}</div>
+        <div class="tiny muted" style="margin-top:9px">Whether these are improvements is the argument you
+          spent four years having. The record is only that they are what changed.</div>`
+      : `<div class="impact-idle"><p>Nothing measurable changed. The country you hand over is the one you
+          were given, which is its own kind of verdict.</p></div>`;
+  }
+
   // The map you actually got, which is the only argument that ever settled one.
   const fm = el.querySelector('#finalmap');
   if (fm) {
@@ -2227,8 +2565,18 @@ function scrFinal(el) {
   }
 
   el.querySelector('#laws').innerHTML = g.laws.length
-    ? g.laws.map(l => `<div style="padding:3px 0" class="dim">• ${esc(l.name)}${l.exec ? ' <span class="pill">executive</span>' : ''}
-        <span class="muted mono tiny">${l.cost !== undefined ? bn(l.cost) + '/yr' : ''}</span></div>`).join('')
+    ? g.laws.map(l => {
+        const outs = Object.entries(l.out || {}).filter(([, v]) => Math.abs(v) > 0.004);
+        return `<div class="law-row">
+          <div class="dim">${esc(l.name)}${l.exec ? ' <span class="pill">executive order</span>' : ''}${
+            l.rule ? ' <span class="pill">rule</span>' : ''}
+            <span class="muted mono tiny">${l.cost !== undefined ? bn(l.cost) + '/yr' : ''}</span></div>
+          ${outs.length ? `<div class="outs">${outs.map(([k, v]) => {
+            const o = OUTCOME_BY_ID[k];
+            return `<span class="out-tag">${esc(o.name)} <b>${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(o.dp)}${o.unit}</b></span>`;
+          }).join('')}</div>` : ''}
+        </div>`;
+      }).join('')
     : '<span class="muted">Nothing was signed.</span>';
 
   el.querySelector('#again').onclick = () => location.reload();
