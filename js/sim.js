@@ -160,21 +160,40 @@ function baseMoraleFromPlatform(cand) {
 const CULT_W = 0.55;
 const PERSUADE_K = 0.0100;   // per unit of sqrt(effort)
 const GROUND_K   = 0.0048;   // turnout multiplier per unit of sqrt(effort)
-const TARGET_K   = 2.60;     // a dollar aimed at one bloc versus one sprayed at a state
+/* Aiming a budget at one bloc instead of spraying it at a state.
+   Two things stop this being a dominant strategy rather than a choice.
+   First, narrowcasting saturates far faster than broadcast does: you can only
+   put a message in front of the same two million people so many times, so the
+   bloc term uses a much steeper root than the statewide one. Measured at equal
+   dollars: a first buy at the right bloc is worth about 1.25x a broadcast buy,
+   and a third buy into that same bloc is worth about 0.2x one.
+   Second, a message written for one group is seen by the others. */
+const TARGET_K    = 3.40;
+const TARGET_POW  = 0.34;    // versus 0.5 for broad spending — it walls off sooner
+const SPILL_K     = 0.05;    // what the people it was not written for make of it
 
 /* How a state is being contested. Persuasion moves share; turnout moves your
    own half of the blocs that already agree with you. Neither dominates: the
    right posture depends on whether the state is close because both sides are
    persuadable or close because neither side has shown up. */
 const POSTURES = {
-  balanced:   { id: 'balanced',   name: 'Balanced',      persuade: 1.00, ground: 1.00,
-                blurb: 'No particular theory of the state. Nothing is wasted and nothing is sharpened.' },
+  /* The default, and deliberately never the best answer: it is what a state
+     looks like before anyone has decided what to do with it. Nothing is
+     sharpened and nothing is wasted, which is the worst of a plan and the best
+     of not having one. */
+  balanced:   { id: 'balanced',   name: 'No Plan Yet',   persuade: 1.00, ground: 1.00,
+                blurb: 'No theory of this state at all. Never the best answer once you have one — and never a disaster if you never get one.' },
   persuasion: { id: 'persuasion', name: 'Persuasion',    persuade: 1.34, ground: 0.68,
                 blurb: 'Everything into changing minds. Right where the middle is genuinely up for grabs.' },
   turnout:    { id: 'turnout',    name: 'Turnout',       persuade: 0.66, ground: 1.42,
                 blurb: 'Everything into getting your own people to the polls. Right where the state is sorted and the margin is a mobilization problem.' },
-  defend:     { id: 'defend',     name: 'Hold and Defend', persuade: 0.88, ground: 1.14,
-                blurb: 'Protect a lead rather than build one. Cheaper to keep a state than to take one.' }
+  /* Defend is deliberately not a third point on the persuasion-turnout line —
+     an interpolation between two options is always beaten by one of them. It
+     is worse than either at *gaining* and it is the only posture that does
+     anything about the other campaign: an operation dug in to hold a state
+     blunts most of what they spend attacking it. */
+  defend:     { id: 'defend',     name: 'Hold and Defend', persuade: 0.82, ground: 1.06, blunt: 0.42,
+                blurb: 'Poor at building a lead and the only thing that protects one: it absorbs most of what the other campaign spends against you here each week.' }
 };
 const POSTURE_LIST = Object.values(POSTURES);
 
@@ -201,6 +220,22 @@ function stateResult(state, player, opp, env, effort) {
   // to stop being the obvious move.
   const post = POSTURES[eff.posture || 'balanced'] || POSTURES.balanced;
   const blocBuy = eff.bloc || {};
+
+  // Spillover. Anything aimed at one bloc is overheard by the rest, and the
+  // further a bloc sits from the one the message was written for, the worse
+  // it plays. This is why you cannot simply buy every bloc in turn.
+  let spill = null;
+  for (const id in blocBuy) {
+    if (!blocBuy[id]) continue;
+    if (!spill) spill = {};
+    const src = BLOC_BY_ID[id];
+    const reach = Math.pow(Math.abs(blocBuy[id]), TARGET_POW);
+    for (const c of BLOCS) {
+      if (c.id === id) continue;
+      const apart = Math.abs(c.pull - src.pull) / 2;          // 0 when aligned, 1 at the poles
+      spill[c.id] = (spill[c.id] || 0) - reach * apart * SPILL_K * PERSUADE_K;
+    }
+  }
 
   for (const b of BLOCS) {
     const comp = state.comp[b.id];
@@ -231,10 +266,10 @@ function stateResult(state, player, opp, env, effort) {
     // Digital reaches low-propensity voters far better than broadcast does
     diff += digital * PERSUADE_K * (b.turnout < 1 ? 1.6 : 0.55) * post.persuade;
 
-    // Money aimed at one bloc is worth far more per dollar than money sprayed
-    // at a whole state — but only at that bloc. Buying the wrong one is the
-    // most efficient way in the game to waste a budget.
-    diff += signedRoot(blocBuy[b.id] || 0) * PERSUADE_K * TARGET_K;
+    // Money aimed at one bloc, and the overheard cost of everyone else's.
+    const aimed = blocBuy[b.id] || 0;
+    if (aimed) diff += Math.sign(aimed) * Math.pow(Math.abs(aimed), TARGET_POW) * PERSUADE_K * TARGET_K;
+    if (spill) diff += spill[b.id] || 0;
 
     const share = logistic(diff * 1.25);
 

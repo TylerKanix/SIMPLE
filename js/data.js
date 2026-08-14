@@ -493,7 +493,7 @@ const CAMPAIGN_ACTIONS = [
   { id: 'ads',     name: 'Buy Broadcast Ads',   cost: 22, days: 0, group: 'Persuasion',
     desc: 'Blunt, expensive, and the only thing that moves numbers at scale.' },
   { id: 'target',  name: 'Targeted Buy',        cost: 13, days: 0, group: 'Persuasion', picksBloc: true,
-    desc: 'Choose a bloc and spend the whole budget on it. Far more efficient per dollar — at exactly one group of people.' },
+    desc: 'Choose a bloc and spend the whole budget on it. Better than broadcast at the right bloc, worth nothing at the wrong one, and it saturates after a buy or two — the same people can only be reached so often.' },
   { id: 'digital', name: 'Digital Persuasion',  cost: 9,  days: 0, group: 'Persuasion',
     desc: 'Cheap and precise. Weak on seniors, strong on everyone under 45.' },
   { id: 'surrogate', name: 'Deploy Surrogates', cost: 6,  days: 0, group: 'Persuasion',

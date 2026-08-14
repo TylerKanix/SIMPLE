@@ -1575,7 +1575,9 @@ async function endCampaignWeek() {
   const targets = proj.states.slice().sort((a, b) => Math.abs(a.margin) - Math.abs(b.margin)).slice(0, 5);
   for (const t of targets) {
     const e = gn.efforts[t.abbr];
-    e.persuade -= 7 + rnd() * 6;   // opposition spending nets against yours
+    // A state you have dug into absorbs most of what they throw at it.
+    const blunt = (POSTURES[e.posture || 'balanced'] || POSTURES.balanced).blunt || 1;
+    e.persuade -= (7 + rnd() * 6) * blunt;   // opposition spending nets against yours
   }
 
   // Base morale decays unless fed. A disciplined campaign bleeds it slower:
