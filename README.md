@@ -11,7 +11,13 @@ server. Double-clicking the file works.
 
 ---
 
-## The four acts
+## The acts
+
+**0 — The Candidate.** A party, a background, an age, a home state worth about
+three points where you are from, and two things you did before politics. Age
+buys gravitas and seniors and costs you the young; biography is a standing
+affinity with particular blocs that no position can buy. All of it is priced on
+screen while you choose it.
 
 **I — The Platform.** Twelve issue axes, five stances each, scored live against
 two different electorates: the one that nominates you and the one that elects
@@ -26,7 +32,17 @@ delegates decide whether you are electable.
 
 **III — The General.** Ten weeks, an electoral college tile map, and an
 opponent who repositions to exploit whatever ground you left open. Money and
-days are both scarce. Election night calls state by state from east to west.
+days are both scarce, and there are three separate ways to spend them: broad
+persuasion, buys aimed at a single bloc in a single state, and a playbook run
+against the other campaign. Every state carries a posture — persuasion,
+turnout, or hold — and a path-to-270 panel stacks the map safest-first so the
+state the whole race rests on is the one with the line drawn through it.
+
+Election night calls the safe states east to west and then holds every close
+one back, running them least-close to most, so the state that decides it is the
+last on the board. Afterwards the map stays open: every state clickable, a
+sortable table of all fifty-one, and a breakdown of where you ran ahead of and
+behind a generic nominee.
 
 **IV — The Government.** Sixteen quarters, each of them thirteen weeks of
 presidential time spent across fourteen kinds of action — a bill is most of a
@@ -35,7 +51,14 @@ each carrying both its politics and what it actually does, and taken to a whip
 count where caucuses split rather than move as blocs. Concessions cost you your
 promise; refusing them costs you the bill. Then midterms. Then, from the election
 year on, the re-election is fought in the same quarters as the governing, on the
-record being made in them.
+record being made in them. Win it and you play the second term — a new Congress,
+every vehicle reset, and political capital that drains a little faster every
+quarter because you cannot run again and everyone in your party knows it.
+
+Situations land on the desk throughout: a landfall, a bank failing on a Friday,
+Americans taken abroad. They do not resolve themselves, they take weeks you were
+going to spend on the agenda, and letting one run out the clock costs more than
+handling it would have.
 
 ---
 

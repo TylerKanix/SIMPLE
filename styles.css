@@ -889,3 +889,91 @@ tbody tr.on { background: #1d1810; }
 .law-row { padding: 6px 0; border-bottom: 1px solid #161e29; }
 .law-row:last-child { border-bottom: none; }
 .law-row .outs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+
+/* ==========================================================================
+   CANDIDATE SETUP — age, home, biography
+   ========================================================================== */
+.split-two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 700px) { .split-two { grid-template-columns: 1fr; } }
+.slider { width: 100%; accent-color: var(--gold); background: transparent; }
+.age-read { font-size: 11px; color: var(--text-mute); margin-top: 5px; line-height: 1.5; }
+.age-read b { color: var(--text); font-family: var(--mono); }
+
+.bio-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.bio {
+  background: var(--bg-3); border: 1px solid var(--line); border-radius: 5px;
+  padding: 7px 9px; cursor: pointer; transition: .1s;
+}
+.bio:hover { background: var(--bg-4); border-color: var(--line-2); }
+.bio.sel { border-color: var(--gold); background: #211c10; }
+.bio .bn { display: block; font-size: 12px; font-weight: 500; }
+.bio .ba { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.bio .ba i {
+  font-style: normal; font-size: 9.5px; font-family: var(--mono);
+  padding: 1px 4px; border-radius: 3px; background: #0c111a; border: 1px solid var(--line);
+}
+.bio .ba i.g { color: var(--green-lt); }
+.bio .ba i.r { color: var(--gop-lt); }
+
+/* ---- per-state posture --------------------------------------------------- */
+.posture { margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--line); }
+.posture-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-bottom: 7px; }
+.pbtn {
+  background: var(--bg-3); border: 1px solid var(--line); border-radius: 4px;
+  padding: 6px 8px; font-size: 11.5px; cursor: pointer; transition: .1s; color: var(--text-dim);
+}
+.pbtn:hover { background: var(--bg-4); border-color: var(--line-2); }
+.pbtn.on { background: #211c10; border-color: var(--gold); color: var(--gold); font-weight: 600; }
+
+/* ---- election night ------------------------------------------------------ */
+/* A state whose polls have closed and whose call the desk will not make. */
+.tile.pending {
+  background: repeating-linear-gradient(45deg, #2a2416, #2a2416 4px, #1d1a10 4px, #1d1a10 8px) !important;
+  animation: tooclose 1.5s ease-in-out infinite;
+}
+@keyframes tooclose { 0%, 100% { box-shadow: inset 0 0 0 1px rgba(212,164,70,.35); } 50% { box-shadow: inset 0 0 0 2px rgba(212,164,70,.9); } }
+.tile.decisive { box-shadow: 0 0 0 2px #fff, 0 0 26px 2px rgba(255,255,255,.55); z-index: 4; }
+.tile.called { animation: callflash .55s ease; }
+
+/* ---- results ------------------------------------------------------------- */
+.sortb {
+  background: transparent; border: 1px solid var(--line); border-radius: 3px;
+  padding: 2px 7px; font-size: 10.5px; cursor: pointer; color: var(--text-mute); margin-left: 3px;
+}
+.sortb:hover { border-color: var(--line-2); color: var(--text); }
+.sortb.on { border-color: var(--gold); color: var(--gold); }
+
+/* ---- situations ---------------------------------------------------------- */
+.prov.situation { border-color: #6b5320; background: #1d1810; }
+.prov.situation:hover { background: #241e12; border-color: var(--gold); }
+.sitbar {
+  position: relative; height: 15px; margin-top: 7px; border-radius: 3px;
+  background: #0c111a; border: 1px solid var(--line); overflow: hidden;
+}
+.sitbar i { display: block; height: 100%; background: linear-gradient(90deg, #8a6a24, var(--gold)); }
+.sitbar b {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 10px; font-weight: 600; text-shadow: 0 1px 2px #000;
+}
+
+/* ---- the path to 270 ------------------------------------------------------
+   States stacked safest-first with a running electoral vote total, and a rule
+   drawn exactly where the 270th vote lands. The state the rule sits on is the
+   one the whole campaign is really about. */
+.path-list { display: flex; flex-direction: column; }
+.path-row {
+  display: grid; grid-template-columns: 1fr 52px 38px; gap: 8px; align-items: baseline;
+  padding: 3px 5px; margin: 0 -5px; border-radius: 3px; cursor: pointer; font-size: 12px;
+}
+.path-row:hover { background: var(--bg-3); }
+.path-row .pn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+.path-row .pm { font-size: 11.5px; text-align: right; }
+.path-row .pc { font-size: 11px; color: var(--text-mute); text-align: right; }
+.path-row.cross .pn { color: var(--gold); font-weight: 600; }
+.path-row.cross .pc { color: var(--gold); font-weight: 700; }
+.path-line { display: flex; align-items: center; gap: 7px; margin: 3px 0; }
+.path-line i { flex: 1; height: 1px; background: var(--gold); display: block; opacity: .7; }
+.path-line b {
+  font-family: var(--mono); font-size: 9.5px; color: var(--gold);
+  letter-spacing: .14em;
+}

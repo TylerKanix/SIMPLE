@@ -248,7 +248,27 @@ function campaignActionPreview(action, abbr) {
     case 'retail':   add.persuade = 24; add.ground = 6; break;
     case 'surrogate':add.persuade = 9; add.ground = 4; break;
     case 'oppo':     add.persuade = 13; break;
+    case 'bracket':  add.persuade = 10; break;
     case 'money':    return { pts: 0, note: 'Raises cash. Moves no votes by itself.' };
+    case 'debatePrep': return { pts: 0, note: 'Banked for the next debate.' };
+    case 'forceMap': return { pts: 0, note: 'Moves their money, not this state.' };
+    // A targeted buy is worth whatever the best bloc here is worth, which is
+    // the number that makes the choice interesting rather than an average.
+    case 'target': case 'attack': {
+      const size = action.id === 'attack' ? 15 * comp : 22 * comp;
+      let best = 0, bestId = null;
+      const bloc0 = Object.assign({}, eff.bloc || {});
+      for (const b of BLOCS) {
+        eff.bloc = Object.assign({}, bloc0);
+        eff.bloc[b.id] = (eff.bloc[b.id] || 0) + size;
+        const m = stateResult(STATE_BY_ABBR[abbr], p, G.opp, G.env, eff).margin;
+        if (m - base > best) { best = m - base; bestId = b.id; }
+      }
+      eff.bloc = bloc0;
+      const pts = best * 100;
+      return { pts, perDollar: pts / action.cost, best: bestId,
+               note: null, prefix: 'best bloc' };
+    }
   }
   if (p.perk === 'media' && action.cost > 0) add.persuade += 5;
 

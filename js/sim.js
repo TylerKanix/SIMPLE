@@ -114,6 +114,9 @@ function blocUtility(bloc, cand, shift) {
   conviction /= ISSUE_IDS.length;
   u -= Math.max(0, 0.95 - conviction) * (primary ? 0.80 : 0.42) * (1 - (t.authenticity - 30) / 200);
 
+  // Biography and age: a standing affinity, independent of any position.
+  if (cand.bioAff) u += cand.bioAff[bloc.id] || 0;
+
   if (cand.perk === 'coalition' && (bloc.id === 'blackVoters' || bloc.id === 'hispanicVoters')) u += 0.22;
   if (cand.perk === 'commander' && bloc.id === 'securityHawks') u += 0.26;
   if (cand.perk === 'movement' && (bloc.id === 'youngLeft' || bloc.id === 'ruralTrad')) u += 0.13;
@@ -157,6 +160,23 @@ function baseMoraleFromPlatform(cand) {
 const CULT_W = 0.55;
 const PERSUADE_K = 0.0100;   // per unit of sqrt(effort)
 const GROUND_K   = 0.0048;   // turnout multiplier per unit of sqrt(effort)
+const TARGET_K   = 2.60;     // a dollar aimed at one bloc versus one sprayed at a state
+
+/* How a state is being contested. Persuasion moves share; turnout moves your
+   own half of the blocs that already agree with you. Neither dominates: the
+   right posture depends on whether the state is close because both sides are
+   persuadable or close because neither side has shown up. */
+const POSTURES = {
+  balanced:   { id: 'balanced',   name: 'Balanced',      persuade: 1.00, ground: 1.00,
+                blurb: 'No particular theory of the state. Nothing is wasted and nothing is sharpened.' },
+  persuasion: { id: 'persuasion', name: 'Persuasion',    persuade: 1.34, ground: 0.68,
+                blurb: 'Everything into changing minds. Right where the middle is genuinely up for grabs.' },
+  turnout:    { id: 'turnout',    name: 'Turnout',       persuade: 0.66, ground: 1.42,
+                blurb: 'Everything into getting your own people to the polls. Right where the state is sorted and the margin is a mobilization problem.' },
+  defend:     { id: 'defend',     name: 'Hold and Defend', persuade: 0.88, ground: 1.14,
+                blurb: 'Protect a lead rather than build one. Cheaper to keep a state than to take one.' }
+};
+const POSTURE_LIST = Object.values(POSTURES);
 
 /* sqrt that keeps its sign, so that being outspent still reads as a deficit. */
 function signedRoot(x) { return Math.sign(x) * Math.sqrt(Math.abs(x)); }
@@ -175,6 +195,13 @@ function stateResult(state, player, opp, env, effort) {
   const ground = signedRoot(eff.ground || 0);
   const digital = signedRoot(eff.digital || 0);
 
+  // A state gets a posture as well as a budget. Persuasion buys share;
+  // turnout buys your own half of every bloc that already agrees with you.
+  // Running the same play in all fifty-one states is what the posture exists
+  // to stop being the obvious move.
+  const post = POSTURES[eff.posture || 'balanced'] || POSTURES.balanced;
+  const blocBuy = eff.bloc || {};
+
   for (const b of BLOCS) {
     const comp = state.comp[b.id];
     if (!comp) continue;
@@ -183,15 +210,31 @@ function stateResult(state, player, opp, env, effort) {
     // Cultural residual not captured by demographics
     diff += state.cult * CULT_W * player.party.dir;
 
+    // Where you are from. Worth about three points at home and a fraction of
+    // that across the region, which is roughly what a favourite son is worth.
+    if (player.home) {
+      if (player.home.abbr === state.abbr) diff += HOME_STATE_BONUS;
+      else if (player.home.region && player.home.region.has(state.abbr)) diff += HOME_REGION_BONUS;
+    }
+    if (opp.home) {
+      if (opp.home.abbr === state.abbr) diff -= HOME_STATE_BONUS;
+      else if (opp.home.region && opp.home.region.has(state.abbr)) diff -= HOME_REGION_BONUS;
+    }
+
     // National environment: economy and time-for-a-change punish the
     // party that currently holds the White House.
     diff -= env.incumbentPenalty * (player.party.id === env.incumbentParty ? 1 : -1);
 
     // Campaign effort in this state
-    diff += persuade * PERSUADE_K;
+    diff += persuade * PERSUADE_K * post.persuade;
 
     // Digital reaches low-propensity voters far better than broadcast does
-    diff += digital * PERSUADE_K * (b.turnout < 1 ? 1.6 : 0.55);
+    diff += digital * PERSUADE_K * (b.turnout < 1 ? 1.6 : 0.55) * post.persuade;
+
+    // Money aimed at one bloc is worth far more per dollar than money sprayed
+    // at a whole state — but only at that bloc. Buying the wrong one is the
+    // most efficient way in the game to waste a budget.
+    diff += signedRoot(blocBuy[b.id] || 0) * PERSUADE_K * TARGET_K;
 
     const share = logistic(diff * 1.25);
 
@@ -205,7 +248,7 @@ function stateResult(state, player, opp, env, effort) {
     const enthP = (player.baseMorale - 58) / 42;
     const enthO = ((opp.baseMorale === undefined ? 58 : opp.baseMorale) - 58) / 42;
 
-    let mobP = 1 + ground * GROUND_K;   // your field program turns out your voters
+    let mobP = 1 + ground * GROUND_K * post.ground;   // your field turns out your voters
     if (align > 0) mobP *= clamp(1 + enthP * (0.15 + 0.58 * align), 0.50, 1.35);
     let mobO = 1;
     if (align < 0) mobO *= clamp(1 + enthO * (0.15 + 0.58 * -align), 0.50, 1.35);
@@ -754,14 +797,18 @@ function applyIssueOutcomes(g, issueId, target, scale) {
    APPROVAL AND CAPITAL
    ========================================================================== */
 function quarterlyCapital(g) {
+  const q = g.term === 2 ? g.quarter - 16 : g.quarter;
   let cap = 14;
   cap += (g.approval - 47) * 0.55;
   cap += (g.econ) * 2.4;
-  if (g.quarter <= 2) cap += 12;               // honeymoon
-  if (g.quarter > 8) cap -= 5;                 // lame-duck drift
+  if (q <= 2) cap += 12;                       // honeymoon, in either term
+  if (q > 8) cap -= 5;                         // lame-duck drift within a term
+  // A president who cannot run again cannot threaten anyone with a primary,
+  // and every member of their own party is already working for the successor.
+  if (g.term === 2) cap -= 4 + Math.max(0, q - 6) * 0.8;
   cap += g.congress.senate.P >= 60 ? 6 : 0;
   cap *= (g.perk === 'executive') ? 1.15 : 1;
-  return Math.round(clamp(cap, 4, 60));
+  return Math.round(clamp(cap, 3, 60));
 }
 
 function approvalDrift(g) {

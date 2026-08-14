@@ -27,7 +27,7 @@ function render() {
   el.innerHTML = '';
   ({
     title: scrTitle, setup: scrSetup, platform: scrPlatform, primary: scrPrimary,
-    general: scrGeneral, night: scrNight, govern: scrGovern,
+    general: scrGeneral, night: scrNight, results: scrResults, govern: scrGovern,
     bill: scrBill, final: scrFinal
   })[G.screen](el);
   window.scrollTo({ top: 0, behavior: 'instant' });
@@ -67,7 +67,8 @@ function renderTopbar() {
     out += statBlock('Proj. EV', gn.proj ? gn.proj.evP : '—', gn.proj && gn.proj.evP >= 270 ? 'good' : 'bad');
   } else if ((G.screen === 'govern' || G.screen === 'bill') && G.gov && G.gov.congress) {
     const g = G.gov;
-    out += statBlock('Quarter', `${g.quarter}/16`);
+    out += statBlock('Quarter', `${g.term === 2 ? g.quarter - 16 : g.quarter}/16`,
+      g.term === 2 ? 'warn' : '');
     out += statBlock('Weeks', `${g.weeks}/${QUARTER_WEEKS}`, g.weeks ? '' : 'warn');
     out += statBlock('Approval', Math.round(g.approval), g.approval >= 50 ? 'good' : g.approval < 42 ? 'bad' : 'warn');
     out += statBlock('Capital', Math.round(g.capital), g.capital >= 25 ? 'good' : g.capital < 10 ? 'bad' : '');
@@ -126,7 +127,7 @@ function scrTitle(el) {
 /* ==========================================================================
    2. SETUP
    ========================================================================== */
-let _setup = { party: 'D', bg: 'gov', name: '' };
+let _setup = { party: 'D', bg: 'gov', name: '', age: 54, home: 'PA', bio: ['smalltown'] };
 
 function scrSetup(el) {
   el.appendChild(h(`
@@ -140,12 +141,25 @@ function scrSetup(el) {
               <input type="text" id="cname" placeholder="e.g. Eleanor Vance" value="${esc(_setup.name)}"></div>
             <div class="field"><label>Party</label>
               <div class="card-grid" id="parties"></div></div>
+            <div class="split-two">
+              <div class="field"><label>Age on Inauguration Day</label>
+                <input type="range" id="age" min="35" max="82" value="${_setup.age}" class="slider">
+                <div id="ageRead" class="age-read"></div></div>
+              <div class="field"><label>Home State <span class="muted">(worth about three points there)</span></label>
+                <select id="home">${STATES.map(s =>
+                  `<option value="${s.abbr}" ${_setup.home === s.abbr ? 'selected' : ''}>${esc(s.name)} — ${s.ev} EV</option>`).join('')}</select>
+                <div id="homeRead" class="age-read"></div></div>
+            </div>
+            <div class="field"><label>Before Politics <span class="muted">(choose two)</span></label>
+              <div class="bio-grid" id="bios"></div></div>
             <div class="field"><label>Random Seed <span class="muted">(same seed, same world)</span></label>
               <input type="text" id="seed" value="${G.seed || ''}" placeholder="leave blank for random"></div>
           </div>
           <div>
             <div class="field"><label>Background</label>
               <div class="card-grid" id="bgs"></div></div>
+            <div class="field"><label>Who This Makes You</label>
+              <div class="panel" style="margin:0"><div id="bioBars"></div></div></div>
           </div>
         </div>
         <div class="btn-row" style="margin-top:16px">
@@ -180,6 +194,46 @@ function scrSetup(el) {
     bw.appendChild(c);
   }
 
+  // biography — pick two
+  const biow = el.querySelector('#bios');
+  for (const b of BIO_TRAITS) {
+    const on = _setup.bio.includes(b.id);
+    const c = h(`<div class="bio ${on ? 'sel' : ''}" title="${esc(b.desc)}">
+      <span class="bn">${esc(b.name)}</span>
+      <span class="ba">${Object.entries(Object.assign({}, b.aff, b.anti || {}))
+        .sort((x, y) => Math.abs(y[1]) - Math.abs(x[1])).slice(0, 2)
+        .map(([id, v]) => `<i class="${v > 0 ? 'g' : 'r'}">${esc(BLOC_BY_ID[id].name)}</i>`).join('')}</span></div>`);
+    c.onclick = () => {
+      const at = _setup.bio.indexOf(b.id);
+      if (at >= 0) _setup.bio.splice(at, 1);
+      else if (_setup.bio.length < 2) _setup.bio.push(b.id);
+      else { _setup.bio.shift(); _setup.bio.push(b.id); }
+      render();
+    };
+    biow.appendChild(c);
+  }
+
+  // live read on what the biography and age are worth
+  const drawBio = () => {
+    const prof = ageProfile(_setup.age);
+    const aff = bioAffinity(_setup.bio, _setup.age);
+    el.querySelector('#ageRead').innerHTML =
+      `<b>${_setup.age}</b> · gravitas ${sgn(prof.gravitas, 0)} · ${
+        prof.scrutiny ? `<span class="a">${esc(prof.scrutiny)}</span>` : 'an unremarkable age for it'}`;
+    const st = STATE_BY_ABBR[_setup.home];
+    el.querySelector('#homeRead').innerHTML =
+      `${esc(st.name)} · ${st.ev} EV · lean ${st.pvi > 0 ? 'D' : 'R'}+${Math.abs(st.pvi).toFixed(1)}`;
+    const rows = Object.entries(aff).filter(([, v]) => Math.abs(v) > 0.01)
+      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+    el.querySelector('#bioBars').innerHTML = rows.length
+      ? rows.map(([id, v]) => `<div class="drow"><span class="dk">${esc(BLOC_BY_ID[id].name)}</span>
+          ${delta(v * 100, { dp: 0, dead: 0.5 })}</div>`).join('')
+      : '<div class="muted small">Nothing that reads as a signal to anybody in particular.</div>';
+  };
+  drawBio();
+  el.querySelector('#age').oninput = e => { _setup.age = +e.target.value; drawBio(); };
+  el.querySelector('#home').onchange = e => { _setup.home = e.target.value; drawBio(); };
+
   el.querySelector('#cname').oninput = e => _setup.name = e.target.value;
   el.querySelector('#back').onclick = () => { G.screen = 'title'; render(); };
   el.querySelector('#next').onclick = () => {
@@ -197,14 +251,35 @@ function hashSeed(s) {
   return x >>> 0;
 }
 
+/* Everything the biography and the age are worth, as one affinity map. */
+function bioAffinity(bioIds, age) {
+  const out = {};
+  const add = m => { for (const k in m) out[k] = (out[k] || 0) + m[k]; };
+  for (const id of bioIds) { const b = BIO_BY_ID[id]; if (b) { add(b.aff); if (b.anti) add(b.anti); } }
+  add(ageProfile(age).aff);
+  return out;
+}
+
+/* The home state and, at a fraction of the value, the region around it. */
+function homeOf(abbr) {
+  const reg = REGION_OF[abbr];
+  return { abbr, region: reg ? new Set(reg.states) : null, regionName: reg ? reg.name : '' };
+}
+
 function startCampaign() {
   const bg = BACKGROUNDS.find(b => b.id === _setup.bg);
   const party = PARTIES[_setup.party];
+  const prof = ageProfile(_setup.age);
   G.player = {
     id: 'player',
     name: (_setup.name || 'Your Candidate').trim(),
     party, partyId: party.id,
     background: bg, perk: bg.perk,
+    age: _setup.age,
+    bio: _setup.bio.slice(),
+    bioAff: bioAffinity(_setup.bio, _setup.age),
+    home: homeOf(_setup.home),
+    stamina: prof.stamina,
     traits: Object.assign({}, bg.traits),
     platform: seedPlatform(party),
     baseMorale: 55,
@@ -213,6 +288,13 @@ function startCampaign() {
     negatives: 0,
     debts: 0
   };
+  // Biography and age move the personal traits as well as the affinities.
+  for (const id of _setup.bio) {
+    const b = BIO_BY_ID[id];
+    if (b && b.traits) for (const k in b.traits) G.player.traits[k] = clamp(G.player.traits[k] + b.traits[k], 5, 99);
+  }
+  G.player.traits.gravitas = clamp(G.player.traits.gravitas + prof.gravitas, 5, 99);
+
   refreshCandidate(G.player);
   _usedNames.first.clear(); _usedNames.last.clear();
   G.field = buildField(party.id);
@@ -1046,6 +1128,12 @@ function beginGeneral() {
   const opp = genericOpponent(oppParty);
   opp.name = (oppParty === 'D' ? 'Gov. ' : 'Sen. ') + personName();
   opp.role = 'The Opposition Nominee';
+  // They are from somewhere too, and it is worth the same to them.
+  const oppHome = pick(STATES.filter(s => s.ev >= 6 && s.abbr !== p.home.abbr));
+  opp.home = homeOf(oppHome.abbr);
+  opp.age = Math.round(rndRange(48, 71));
+  opp.bioAff = bioAffinity([pick(BIO_TRAITS).id], opp.age);
+  refreshCandidate(opp);
   opp.blurb = oppParty === 'D'
     ? 'Came out of a bruising primary with the coalition mostly intact and a pollster who reads the same numbers you do.'
     : 'Won the nomination by consolidating early, and has spent every week since testing which of your positions is the softest.';
@@ -1141,6 +1229,10 @@ function scrGeneral(el) {
             <tbody id="battle"></tbody></table></div>
         </div>
         <div class="panel">
+          <div class="panel-head"><h2>The Path to 270</h2><span class="sub">cheapest first</span></div>
+          <div id="path"></div>
+        </div>
+        <div class="panel">
           <div class="panel-head"><h2>National Coalition</h2></div>
           <div id="gbars"></div>
         </div>
@@ -1150,6 +1242,31 @@ function scrGeneral(el) {
         </div>
       </div>
     </div></div>`));
+
+  // Order every state by how safe it is for you and walk the running total up
+  // to 270. Where the line falls is the tipping point; everything above it is
+  // the campaign you are actually running, and everything below it is a state
+  // you are spending money on for reasons you should be able to name.
+  const path = proj.states.slice().sort((a, b) => b.margin - a.margin);
+  let acc = 0, crossed = false;
+  el.querySelector('#path').innerHTML = `<div class="path-list">${path.map(s => {
+    const before = acc; acc += s.ev;
+    const isCross = !crossed && acc >= 270;
+    if (isCross) crossed = true;
+    if (before > 300) return '';
+    return `<div class="path-row ${isCross ? 'cross' : ''} ${s.margin > 0 ? 'won' : 'lost'}"
+        data-a="${s.abbr}" title="${esc(s.name)}">
+      <span class="pn">${esc(s.name)}</span>
+      <span class="pm mono ${s.margin > 0 ? 'g' : 'r'}">${sgn(s.margin * 100, 1)}</span>
+      <span class="pc mono">${acc}</span>
+    </div>${isCross ? '<div class="path-line"><i></i><b>270</b><i></i></div>' : ''}`;
+  }).join('')}</div>
+  <div class="tiny muted" style="margin-top:9px">You are at <b class="mono">${proj.evP}</b>.
+    ${proj.evP >= 270
+      ? `The line rests on <b>${esc(proj.tipping.name)}</b> — that is the state you cannot afford to lose.`
+      : `You need <b class="mono">${270 - proj.evP}</b> more, and the cheapest are the ones just below the line.`}</div>`;
+  el.querySelectorAll('#path .path-row').forEach(r =>
+    r.onclick = () => { gn.target = r.dataset.a; render(); });
 
   renderMap(el.querySelector('#map'), proj.states, {
     playerParty: p.partyId, target: gn.target, efforts: gn.efforts,
@@ -1168,10 +1285,26 @@ function scrGeneral(el) {
       ${r.close ? `<span class="rc">${r.close} close</span>` : ''}
     </div>`).join('');
 
-  // state file
-  el.querySelector('#sfile').innerHTML = stateFileHtml(tgt);
+  // state file, with the posture this state is being contested under
+  const eff0 = gn.efforts[gn.target];
+  el.querySelector('#sfile').innerHTML = stateFileHtml(tgt) + `
+    <div class="posture">
+      <div class="imp-sec" style="margin-top:0">Plan of attack here</div>
+      <div class="posture-row">${POSTURE_LIST.map(ps =>
+        `<button class="pbtn ${(eff0.posture || 'balanced') === ps.id ? 'on' : ''}" data-pos="${ps.id}"
+          title="${esc(ps.blurb)}">${esc(ps.name)}</button>`).join('')}</div>
+      <div class="tiny muted" id="postureNote">${esc((POSTURES[eff0.posture || 'balanced']).blurb)}</div>
+      ${Object.keys(eff0.bloc || {}).length ? `<div class="imp-sec">Aimed at</div>
+        <div class="imp-list">${Object.entries(eff0.bloc).map(([id, v]) =>
+          `<div class="drow"><span class="dk">${esc(BLOC_BY_ID[id].name)}</span>
+            <span class="mono">${Math.round(v)}</span></div>`).join('')}</div>` : ''}
+    </div>`;
   const full = el.querySelector('#sfile .full-file');
   if (full) full.onclick = () => openStateFile(gn.target, tgt);
+  el.querySelectorAll('#sfile .pbtn').forEach(b => b.onclick = () => {
+    gn.efforts[gn.target].posture = b.dataset.pos;
+    updateProjection(); render();
+  });
 
   // opposition summary
   const ob = el.querySelector('#oppbox');
@@ -1187,13 +1320,18 @@ function scrGeneral(el) {
   el.querySelector('#oppfile').onclick = () => openDossier(G.opp, {});
 
   const aw = el.querySelector('#actions');
+  let lastGrp = null;
   for (const a of CAMPAIGN_ACTIONS) {
     const ok = gn.money >= a.cost && gn.days >= a.days;
     const pv = campaignActionPreview(a, gn.target);
+    if (a.group !== lastGrp) { lastGrp = a.group; aw.appendChild(h(`<div class="act-group">${esc(a.group)}</div>`)); }
     const row = h(`<div class="prov act ${ok ? '' : 'stripped'}">
-      <div><div class="nm">${esc(a.name)}</div><div class="note">${esc(a.desc)}</div></div>
+      <div><div class="nm">${esc(a.name)}${a.picksBloc ? ' <span class="pill">pick a bloc</span>' : ''}</div>
+        <div class="note">${esc(a.desc)}</div>
+        ${a.backfire ? `<div class="blocked">${Math.round(a.backfire * 100)}% chance it becomes the story instead.</div>` : ''}</div>
       <div class="gain">${pv.note ? `<span class="muted tiny">${esc(pv.note)}</span>`
-        : `${delta(pv.pts, { dp: 2, dead: 0.005, unit: ' pts' })}
+        : `${pv.prefix ? `<span class="per">${esc(pv.prefix)}${pv.best ? ': ' + esc(BLOC_BY_ID[pv.best].name) : ''}</span>` : ''}
+           ${delta(pv.pts, { dp: 2, dead: 0.005, unit: ' pts' })}
            ${pv.perDollar ? `<span class="per">${(pv.perDollar * 100).toFixed(2)} per $10M</span>` : ''}`}</div>
       <div class="fig">${a.cost ? '−' + money(a.cost) : '<span class="g">+cash</span>'}<br>
         <span class="muted tiny">${a.days ? a.days + ' day' + (a.days > 1 ? 's' : '') : 'no days'}</span></div></div>`);
@@ -1332,12 +1470,37 @@ function openStateFile(abbr, t) {
   showSheet(st.name, 'State File', html);
 }
 
-function doCampaignAction(a) {
+async function doCampaignAction(a) {
   const gn = G.general, p = G.player;
   const t = gn.target;
+
+  // The buys that pick a bloc ask which one, and show what each is worth here
+  // before you commit: its size in this state, and how close it currently is.
+  let blocId = null;
+  if (a.picksBloc) {
+    const prof = stateProfile(t, p, G.opp, G.env, gn.efforts, null);
+    const ranked = prof.blocs.slice().sort((x, y) => y.size - x.size);
+    const idx = await showModal({
+      kicker: a.id === 'attack' ? 'Negative Targeting' : 'Audience', title: `Which Bloc, in ${STATE_BY_ABBR[t].name}?`,
+      text: a.id === 'attack'
+        ? 'Money aimed at one group is worth far more per dollar than money sprayed at a state. A negative buy works best where they are currently winning — you are not persuading, you are dampening.'
+        : 'Money aimed at one group is worth far more per dollar than money sprayed at a state, and worth nothing at all if you pick a bloc that is small here or has already made up its mind.',
+      choices: ranked.map(b => ({
+        label: b.name,
+        hint: `${(b.size * 100).toFixed(1)}% of this state · you are at ${(b.share * 100).toFixed(0)}%` +
+              ` · ${Math.abs(b.share - .5) < .08 ? 'genuinely up for grabs' : b.share > .5 ? 'already yours' : 'theirs for now'}`
+      })).concat([{ label: 'Never mind' }])
+    });
+    if (idx >= ranked.length) return;
+    blocId = ranked[idx].id;
+  }
+
   gn.money -= a.cost; gn.days -= a.days;
   const eff = gn.efforts[t];
   const comp = p.perk === 'executive' ? 1.1 : 1;
+  if (!eff.bloc) eff.bloc = {};
+  const bumpBloc = (id, v) => { eff.bloc[id] = (eff.bloc[id] || 0) + v; };
+
   switch (a.id) {
     case 'ads':      eff.persuade += 20 * comp; logMsg(`$22M broadcast buy in ${STATE_BY_ABBR[t].name}.`, '', `WEEK ${gn.week}`); break;
     case 'digital':  eff.digital += 16 * comp; logMsg(`Digital persuasion program live in ${STATE_BY_ABBR[t].name}.`, '', `WEEK ${gn.week}`); break;
@@ -1352,8 +1515,54 @@ function doCampaignAction(a) {
     case 'oppo':     eff.persuade += 13; p.baseMorale = clamp(p.baseMorale - 1.5, 10, 95);
                      G.opp.bonusU -= 0.035; refreshCandidate(G.opp);
                      logMsg('The oppo drop lands. Both sets of negatives tick up.', '', `WEEK ${gn.week}`); break;
+
+    case 'target':   bumpBloc(blocId, 22 * comp);
+                     logMsg(`$13M aimed squarely at ${BLOC_BY_ID[blocId].name} in ${STATE_BY_ABBR[t].name}.`, 'good', `WEEK ${gn.week}`); break;
+
+    case 'attack': { // Dampening rather than persuading: it pulls them down
+                     // more than it pulls you up, and it costs you your own.
+                     bumpBloc(blocId, 15 * comp);
+                     G.opp.bonusU -= 0.030; refreshCandidate(G.opp);
+                     p.baseMorale = clamp(p.baseMorale - 2, 10, 95);
+                     p.negatives += 4;
+                     logMsg(`A negative campaign against ${G.opp.name} runs on every screen ${BLOC_BY_ID[blocId].name} in ${STATE_BY_ABBR[t].name} own.`, '', `WEEK ${gn.week}`); break; }
+
+    case 'bracket':  eff.persuade += 10;
+                     G.opp.bonusU -= 0.012; refreshCandidate(G.opp);
+                     gn.bracketed = (gn.bracketed || 0) + 1;
+                     logMsg(`You land in ${STATE_BY_ABBR[t].name} the same morning they do and take half the coverage.`, 'good', `WEEK ${gn.week}`); break;
+
+    case 'forceMap': { // Their money has to come from somewhere.
+                     const safe = gn.proj.states.filter(s => !s.won && s.margin < -0.06 && s.margin > -0.20)
+                       .sort((x, y) => y.ev - x.ev)[0];
+                     if (safe) {
+                       gn.efforts[safe.abbr].persuade += 9;
+                       gn.forced = (gn.forced || 0) + 1;
+                       // pull their spending out of the closest battleground
+                       const tight = gn.proj.states.slice()
+                         .sort((x, y) => Math.abs(x.margin) - Math.abs(y.margin))[0];
+                       if (tight) gn.efforts[tight.abbr].persuade += 11;
+                       logMsg(`You go up on air in ${safe.name}. They pull out of ${tight ? tight.name : 'a battleground'} to answer it.`, 'good', `WEEK ${gn.week}`);
+                     } else {
+                       gn.money += a.cost;
+                       logMsg('There is no state of theirs soft enough to be worth the feint.', 'bad', `WEEK ${gn.week}`);
+                     }
+                     break; }
+
+    case 'debatePrep': gn.debatePrep = (gn.debatePrep || 0) + 1;
+                     logMsg('Two days in a hotel ballroom with someone playing them. It will show.', '', `WEEK ${gn.week}`); break;
   }
+
+  // Going negative is not free. Sometimes the story becomes the attack.
+  if (a.backfire && rnd() < a.backfire) {
+    p.baseMorale = clamp(p.baseMorale - 3, 10, 95);
+    p.negatives += 5;
+    p.bonusU -= 0.014;
+    logMsg('The attack becomes the story. Your own numbers take the hit instead.', 'bad', `WEEK ${gn.week}`);
+  }
+
   if (p.perk === 'media' && a.cost > 0) eff.persuade += 5;
+  refreshCandidate(p);
   updateProjection();
   render();
 }
@@ -1406,24 +1615,58 @@ async function generalEvent(force) {
    ========================================================================== */
 function runElectionNight() {
   const result = runGeneralElection(G.player, G.opp, G.env, G.general.efforts);
-  // Poll-closing order derived from the tile map: eastern columns first.
-  const col = {};
-  TILE_MAP.forEach(row => row.forEach((a, i) => { if (a) col[a] = i; }));
-  result.order = result.states.slice().sort((a, b) => (col[b.abbr] - col[a.abbr]) || (rnd() - 0.5));
   G.general.result = result;
   G.general.called = [];
+  G.general.baseline = genericBaseline(G.player.partyId);
+  orderTheNight(result);
   G.screen = 'night';
   render();
   stepNight();
 }
 
+/* The order the desk calls them in, which is the entire source of the drama.
+   Safe states go first, east to west, because that is when they close and
+   because they are not in doubt. Everything genuinely close is held back and
+   run from least close to most, so the state that decides it is the last one
+   on the board rather than an accident of longitude. */
+function orderTheNight(result) {
+  const col = {};
+  TILE_MAP.forEach(row => row.forEach((a, i) => { if (a) col[a] = i; }));
+  const close = s => Math.abs(s.margin) * 100;
+  const safe = result.states.filter(s => close(s) >= 6.5)
+    .sort((a, b) => (col[b.abbr] - col[a.abbr]) || (rnd() - 0.5));
+  const tight = result.states.filter(s => close(s) < 6.5)
+    .sort((a, b) => close(b) - close(a));
+  result.order = safe.concat(tight);
+  result.safeCount = safe.length;
+
+  // Which call actually crosses 270 — the desk holds its breath for that one.
+  let ev = 0, evO = 0;
+  result.decisive = null;
+  for (const s of result.order) {
+    if (s.won) ev += s.ev; else evO += s.ev;
+    if (!result.decisive && (ev >= 270 || evO >= 270)) result.decisive = s.abbr;
+  }
+}
+
+/* How long the desk sits on a call before making it. */
+function nightDelay(s, idx, r) {
+  if (s.abbr === r.decisive) return 2100;
+  const c = Math.abs(s.margin) * 100;
+  if (c < 1.0) return 1700;
+  if (c < 2.5) return 1150;
+  if (c < 4.5) return 800;
+  if (c < 6.5) return 560;
+  return idx < 5 ? 340 : (s.ev >= 16 ? 200 : 105);
+}
+
 function stepNight() {
   const r = G.general.result;
-  if (G.general.called.length >= r.order.length) return setTimeout(finishNight, 900);
+  if (G.general.called.length >= r.order.length) return setTimeout(finishNight, 1400);
   const next = r.order[G.general.called.length];
   G.general.called.push(next.abbr);
   paintNight();
-  setTimeout(stepNight, G.general.called.length < 8 ? 260 : 130);
+  setTimeout(stepNight, nightDelay(next, G.general.called.length, r));
 }
 
 function scrNight(el) {
@@ -1454,12 +1697,18 @@ function paintNight() {
   const evO = shown.filter(s => !s.won).reduce((a, s) => a + s.ev, 0);
   const mapEl = document.querySelector('#map'); if (!mapEl) return;
   const last = shown[shown.length - 1];
+  // Once the safe states are on the board, everything still outstanding is a
+  // battleground, and it says so rather than sitting there looking unpainted.
+  const pending = gn.called.length >= r.safeCount
+    ? r.order.slice(gn.called.length).map(s => s.abbr) : [];
   renderMap(mapEl, shown, {
     playerParty: p.partyId, big: true, baseline: gn.baseline,
-    flash: last && last.abbr
+    flash: last && last.abbr, pending,
+    decisive: r.decisive && gn.called.includes(r.decisive) ? r.decisive : null
   });
   renderEvBar(document.querySelector('#ev'), evP, evO, p.partyId);
-  document.querySelector('#clock').textContent = `${shown.length} of 51 called`;
+  document.querySelector('#clock').textContent =
+    `${shown.length} of 51 called${pending.length ? ` · ${pending.length} too close to call` : ''}`;
 
   const tb = document.querySelector('#calls');
   tb.innerHTML = shown.slice().reverse().slice(0, 34).map(s => {
@@ -1470,14 +1719,16 @@ function paintNight() {
       <td class="num">${delta(sw, { dp: 1, dead: 0.2 })}</td></tr>`;
   }).join('');
 
+  const isDecisive = last && last.abbr === r.decisive;
   document.querySelector('#callticker').innerHTML = last
     ? tickerBar([
-        ['Call', `${esc(last.name)} — ${last.won ? 'you' : esc(G.opp.name)}`, last.won ? 'g' : 'r'],
+        [isDecisive ? 'The race is called' : 'Call',
+          `${esc(last.name)} — ${last.won ? 'you' : esc(G.opp.name)}`, last.won ? 'g' : 'r'],
         ['Margin', sgn(last.margin * 100, 1), last.won ? 'g' : 'r'],
         ['Electoral votes', `${evP} – ${evO}`],
-        ['To 270', evP >= 270 ? 'called' : `${270 - evP} more`]
-      ], 'Decision Desk')
-    : tickerBar([['Status', 'polls closing']], 'Decision Desk');
+        ['To 270', evP >= 270 ? 'over the line' : evO >= 270 ? 'they are over the line' : `${270 - evP} more`]
+      ], isDecisive ? 'RACE CALLED' : 'Decision Desk')
+    : tickerBar([['Status', 'polls closing across the eastern states']], 'Decision Desk');
 }
 
 async function finishNight() {
@@ -1507,7 +1758,8 @@ async function finishNight() {
       }
       logMsg('Every executive order is revoked in the first week of the next administration.', 'bad', 'JAN 20');
     }
-    G.screen = 'final';
+    G.results = { r, won, next: won ? 'secondTerm' : 'final', env: g.env2 };
+    G.screen = 'results';
     return render();
   }
   await showModal({
@@ -1519,12 +1771,157 @@ async function finishNight() {
       ${!won ? '<br><br>You call at 1:40am and concede at 2:15.' : ''}`,
     choices: [{ label: won ? 'Begin the transition →' : 'See the post-mortem' }]
   });
-  if (!won) {
-    G.gov = { failedAt: 'general', platform: p.platform, approval: 0, econ: 0, laws: [], enacted: {},
-      baseMorale: p.baseMorale, deficit: 0, institutionalDamage: 0, reelected: null, quarter: 0, result: r };
-    G.screen = 'final'; return render();
+  // The map is worth looking at before the game moves on from it.
+  G.results = { r, won, next: won ? 'govern' : 'final', env: G.env };
+  G.screen = 'results';
+  render();
+}
+
+/* ==========================================================================
+   7b. THE RESULTS — the map, once it has stopped moving
+   ========================================================================== */
+function scrResults(el) {
+  const { r, won } = G.results;
+  const p = G.player, gn = G.general;
+  const env = G.results.env || G.env;
+  const baseline = gn.baseline || genericBaseline(p.partyId, env);
+  const regions = regionSummary(r.states, p.partyId);
+  const sort = G.results.sort || 'margin';
+
+  const rows = r.states.slice().sort((a, b) =>
+    sort === 'ev' ? b.ev - a.ev :
+    sort === 'swing' ? ((b.margin - baseline[b.abbr]) - (a.margin - baseline[a.abbr])) :
+    sort === 'name' ? a.name.localeCompare(b.name) :
+    b.margin - a.margin);
+
+  el.appendChild(h(`<div class="fade-in">
+    ${tickerBar([
+      ['Result', won ? `${esc(p.name)} wins` : `${esc(G.opp.name)} wins`, won ? 'g' : 'r'],
+      ['Electoral college', `${r.evP} – ${r.evO}`],
+      ['Popular vote', `${pct(r.popular, 1)} – ${pct(1 - r.popular, 1)}`],
+      ['Tipping point', `${esc(r.tipping.name)} ${sgn(r.tipping.margin * 100, 1)}`],
+      ['College bias', biasLabel()]
+    ], 'Final')}
+    <div class="split">
+      <div>
+        <div class="panel">
+          <div class="panel-head"><h2>The Final Map</h2><span class="spacer"></span>
+            <span class="sub">click any state for its full file</span></div>
+          <div id="map"></div>
+          <div id="ev" style="margin-top:16px"></div>
+          <div class="region-strip" id="regions"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Every State</h2><span class="spacer"></span>
+            <span class="sub">sort by
+              <button class="sortb ${sort === 'margin' ? 'on' : ''}" data-s="margin">margin</button>
+              <button class="sortb ${sort === 'ev' ? 'on' : ''}" data-s="ev">votes</button>
+              <button class="sortb ${sort === 'swing' ? 'on' : ''}" data-s="swing">your swing</button>
+              <button class="sortb ${sort === 'name' ? 'on' : ''}" data-s="name">name</button></span></div>
+          <div class="table-scroll" style="max-height:520px"><table><thead><tr>
+            <th>State</th><th class="num">EV</th><th class="num">Margin</th>
+            <th class="num">vs. generic</th><th class="num">Spent</th></tr></thead>
+            <tbody id="all"></tbody></table></div>
+        </div>
+      </div>
+      <div class="rail">
+        <div class="panel">
+          <div class="panel-head"><h2>How It Was Won</h2></div>
+          <div id="why"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>National Coalition</h2><span class="sub">final</span></div>
+          <div id="cbars"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Closest Calls</h2></div>
+          <div id="closest"></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="go" style="width:100%">${
+            won ? 'Begin the transition →' : 'See the post-mortem →'}</button>
+        </div>
+      </div>
+    </div></div>`));
+
+  const elast = stateElasticities(p, G.opp, env, gn.efforts);
+  renderMap(el.querySelector('#map'), r.states, {
+    playerParty: p.partyId, big: true, showMargins: true, baseline, elasticity: elast,
+    efforts: gn.efforts,
+    onClick: abbr => openStateFile(abbr, stateProfile(abbr, p, G.opp, env, gn.efforts, elast))
+  });
+  renderEvBar(el.querySelector('#ev'), r.evP, r.evO, p.partyId);
+
+  el.querySelector('#regions').innerHTML = regions.map(reg => `
+    <div class="reg"><span class="rn">${esc(reg.reg.name)}</span>
+      <span class="rb"><i style="width:${(reg.evP / Math.max(1, reg.evP + reg.evO) * 100).toFixed(0)}%;
+        background:${p.partyId === 'D' ? 'var(--dem)' : 'var(--gop)'}"></i></span>
+      <span class="rv mono">${reg.evP}<i>–${reg.evO}</i></span></div>`).join('');
+
+  const tb = el.querySelector('#all');
+  for (const s of rows) {
+    const sw = (s.margin - baseline[s.abbr]) * 100;
+    const e = gn.efforts[s.abbr];
+    const spent = Math.round(e.persuade + e.ground + e.digital +
+      Object.values(e.bloc || {}).reduce((a, b) => a + b, 0));
+    tb.appendChild(h(`<tr data-a="${s.abbr}">
+      <td>${esc(s.name)} <span class="pill ${s.won ? 'green' : 'red'}">${s.won ? 'YOU' : 'THEM'}</span></td>
+      <td class="num">${s.ev}</td>
+      <td class="num ${s.won ? 'g' : 'r'}">${sgn(s.margin * 100, 1)}</td>
+      <td class="num">${delta(sw, { dp: 1, dead: 0.2 })}</td>
+      <td class="num muted">${spent || '—'}</td></tr>`));
   }
-  beginGovernment(r);
+  tb.querySelectorAll('tr').forEach(tr => tr.onclick = () =>
+    openStateFile(tr.dataset.a, stateProfile(tr.dataset.a, p, G.opp, env, gn.efforts, elast)));
+  el.querySelectorAll('.sortb').forEach(b => b.onclick = () => { G.results.sort = b.dataset.s; render(); });
+
+  // where the election was actually decided
+  const swings = r.states.map(s => ({ s, sw: (s.margin - baseline[s.abbr]) * 100 }));
+  const best = swings.slice().sort((a, b) => b.sw - a.sw).slice(0, 3);
+  const worst = swings.slice().sort((a, b) => a.sw - b.sw).slice(0, 3);
+  const flipped = r.states.filter(s => s.won !== (baseline[s.abbr] > 0));
+  el.querySelector('#why').innerHTML = `
+    <div class="imp-rows">
+      ${deltaRow('Popular vote margin', (r.popular * 2 - 1) * 100, { dp: 1, unit: ' pts' })}
+      ${deltaRow('Tipping-point margin', r.tipping.margin * 100, { dp: 1, unit: ' pts' })}
+      <div class="drow"><span class="dk">College bias this cycle</span><span class="mono">${biasLabel()}</span></div>
+      <div class="drow"><span class="dk">States you moved off their lean</span><span class="mono">${flipped.length}</span></div>
+    </div>
+    <div class="imp-sec">You ran furthest ahead in</div>
+    <div class="imp-list">${best.map(x => `<div class="drow"><span class="dk">${esc(x.s.name)}
+      <i class="ev-mini">${x.s.ev}</i></span>${delta(x.sw, { dp: 1 })}</div>`).join('')}</div>
+    <div class="imp-sec">You ran furthest behind in</div>
+    <div class="imp-list">${worst.map(x => `<div class="drow"><span class="dk">${esc(x.s.name)}
+      <i class="ev-mini">${x.s.ev}</i></span>${delta(x.sw, { dp: 1 })}</div>`).join('')}</div>`;
+
+  renderBlocBars(el.querySelector('#cbars'), p, G.opp, nationalWeights());
+
+  const closest = r.states.slice().sort((a, b) => Math.abs(a.margin) - Math.abs(b.margin)).slice(0, 8);
+  el.querySelector('#closest').innerHTML = `<div class="imp-list">${closest.map(s =>
+    `<div class="drow"><span class="dk">${esc(s.name)} <i class="ev-mini">${s.ev}</i></span>
+      <span class="mono ${s.won ? 'g' : 'r'}">${sgn(s.margin * 100, 2)}</span></div>`).join('')}</div>
+    <div class="tiny muted" style="margin-top:8px">${(() => {
+      const flip = closest.filter(s => !s.won).slice(0, 3);
+      const need = 270 - r.evP;
+      if (r.evP >= 270) return 'Any two of these going the other way would have made for a much longer night.';
+      let acc = 0; const list = [];
+      for (const s of flip) { acc += s.ev; list.push(s.name); if (acc >= need) break; }
+      return acc >= need ? `${list.join(', ')} would have been enough.`
+        : 'Even sweeping the close ones would not have been enough.';
+    })()}</div>`;
+
+  el.querySelector('#go').onclick = () => {
+    if (G.results.next === 'govern') return beginGovernment(G.results.r);
+    if (G.results.next === 'secondTerm') return beginSecondTerm();
+    if (G.results.next === 'final') {
+      if (!G.gov) {
+        G.gov = { failedAt: 'general', platform: p.platform, approval: 0, econ: 0, laws: [], enacted: {},
+          baseMorale: p.baseMorale, deficit: 0, institutionalDamage: 0, reelected: null, quarter: 0,
+          result: G.results.r, outcomes: {} };
+      }
+      G.screen = 'final'; render();
+    }
+  };
 }
 
 /* ==========================================================================
@@ -1566,7 +1963,10 @@ function beginGovernment(result) {
     judiciary: 0,          // friendly benches: executive action survives longer
     competence: 0,         // a cabinet that returns calls
     camp: null,            // the re-election campaign, once there is one
-    campFunds: 0
+    campFunds: 0,
+    term: 1,
+    situations: [],        // live crises eating this quarter's weeks
+    seenSituations: []
   };
   G.gov.capital = quarterlyCapital(G.gov);
   G.gov.history.push({ q: 0, approval: G.gov.approval, econ: G.gov.econ, laws: 0 });
@@ -1643,10 +2043,11 @@ function scrGovern(el) {
   const g = G.gov, p = G.player;
   const yr = 2029 + Math.floor((g.quarter - 1) / 4);
   const q = ((g.quarter - 1) % 4) + 1;
+  const termQ = g.term === 2 ? g.quarter - 16 : g.quarter;
 
   el.appendChild(h(`<div class="fade-in">
     ${tickerBar([
-      ['Quarter', `Q${q} ${yr} · ${g.quarter} of 16`],
+      ['Quarter', `Q${q} ${yr} · ${termQ} of 16${g.term === 2 ? ' · second term' : ''}`],
       ['Approval', `${Math.round(g.approval)}%`, g.approval >= 50 ? 'g' : g.approval < 42 ? 'r' : ''],
       ['Laws enacted', g.laws.length],
       ['Capital', Math.round(g.capital)],
@@ -1666,7 +2067,10 @@ function scrGovern(el) {
           ${g.done.length ? `<div class="done-list">This quarter: ${g.done.map(d => esc(d)).join(' · ')}</div>` : ''}
           <div id="actions"></div>
           <div class="btn-row" style="margin-top:12px;border-top:1px solid var(--line);padding-top:13px">
-            <button class="btn primary" id="endq">${g.quarter >= 16 ? 'To the Election →' : `Advance to Q${g.quarter + 1} →`}</button>
+            <button class="btn primary" id="endq">${
+              g.quarter === 16 ? 'To the Election →'
+              : g.quarter >= 32 ? 'Leave Office →'
+              : `Advance to Q${termQ + 1} →`}</button>
             <span class="muted small">${Math.round(g.capital)} political capital · ${g.weeks} week${g.weeks === 1 ? '' : 's'} left</span>
           </div>
         </div>
@@ -1704,6 +2108,36 @@ function scrGovern(el) {
     </div></div>`));
 
   const aw = el.querySelector('#actions');
+
+  // Anything currently on the desk comes first, because it is the thing most
+  // likely to cost you the quarter if you keep deciding it can wait.
+  if (g.situations.length) {
+    aw.appendChild(h(`<div class="act-group">On the Desk</div>`));
+    for (const live of g.situations) {
+      const s = SITUATIONS.find(x => x.id === live.id);
+      const left = s.weeks - live.put;
+      const put = Math.min(left, g.weeks);
+      const ok = put > 0;
+      const qLeft = live.due - g.quarter;
+      const row = h(`<div class="prov act situation ${ok ? '' : 'stripped'}">
+        <div><div class="nm">${esc(s.name)}
+            <span class="pill ${qLeft <= 0 ? 'red' : 'gold'}">${qLeft <= 0 ? 'last chance' : qLeft + ' quarter' + (qLeft === 1 ? '' : 's') + ' left'}</span></div>
+          <div class="note">${esc(s.desc)}</div>
+          <div class="sitbar"><i style="width:${(live.put / s.weeks * 100).toFixed(0)}%"></i>
+            <b>${live.put} of ${s.weeks} weeks</b></div>
+          ${!ok ? '<div class="blocked">No weeks left this quarter.</div>' : ''}</div>
+        <div class="gain">${effectTags(effectSummary(s.resolved, 'gov'))}</div>
+        <div class="fig"><span class="wk">${put} wk</span><br><span class="muted tiny">put in</span></div></div>`);
+      if (ok) row.onclick = () => {
+        live.put += put; g.weeks -= put;
+        g.done.push(s.working);
+        logMsg(`${put} week${put === 1 ? '' : 's'} on ${s.name.toLowerCase()}.`, '', `Q${g.quarter}`);
+        render();
+      };
+      aw.appendChild(row);
+    }
+  }
+
   let lastGroup = null;
   for (const a of GOV_ACTIONS) {
     const avail = actionAvailable(a, g);
@@ -1830,10 +2264,28 @@ async function doGovAction(a) {
   if (a.id === 'bill') {
     const avail = BILLS.filter(b => !g.billsDone.includes(b.id));
     if (!avail.length) { await showModal({ title: 'The Agenda Is Exhausted', text: 'Every vehicle has been used this term.', choices: [{ label: 'Back' }] }); return; }
+    // What each vehicle is worth before you spend six weeks on it: how far
+    // your promise on that issue still is from what is enacted, and what the
+    // full bill would do to the country.
     const idx = await showModal({
       kicker: 'Legislative Strategy', title: 'Which Bill?',
       text: 'You have the floor time for one major bill. Leadership wants to know which.',
-      choices: avail.map(b => ({ label: b.name, hint: b.blurb }))
+      choices: avail.map(b => {
+        const full = {};
+        for (const pv of b.provisions) addOutcomes({ outcomes: full }, pv.out);
+        const top = OUTCOMES.filter(o => Math.abs(full[o.id] || 0) > 0.004)
+          .sort((x, y) => Math.abs(full[y.id]) - Math.abs(full[x.id])).slice(0, 3);
+        const promised = g.platform.positions[b.issue];
+        const done = g.enacted[b.issue];
+        return {
+          label: b.name,
+          hint: `${b.blurb}  ·  You promised ${STANCES[b.issue].find(s => s.p === promised).label}` +
+                (done === undefined ? ' — nothing enacted yet.' : ` — currently at ${sgn(done, 2)}.`),
+          tags: `<span class="eff-tags">${top.map(o =>
+            `<span class="out-tag">${esc(o.name)} <b>${full[o.id] > 0 ? '+' : '−'}${
+              Math.abs(full[o.id]).toFixed(o.dp)}${o.unit}</b></span>`).join('')}</span>`
+        };
+      })
     });
     G.bill = { bill: avail[idx], selected: avail[idx].provisions.slice(0, 3).map(x => x.id),
       boosts: {}, pulpit: 0, reconciliation: false, vehicle: false, spentCapital: 0, dealsWith: [] };
@@ -1984,6 +2436,8 @@ async function endQuarter() {
   g.deficit += Math.max(0, g.deficit * 0.004);
 
   if (rnd() < 0.55) await governingEvent();
+  await advanceSituations();
+  if (rnd() < 0.42) await raiseSituation();
 
   g.history.push({ q: g.quarter, approval: g.approval, econ: g.econ, laws: g.laws.length });
   g.quarter++;
@@ -1991,12 +2445,70 @@ async function endQuarter() {
   g.done = [];
   g.capital = Math.round(clamp(g.capital * 0.35 + quarterlyCapital(g), 0, 90));
 
-  if (g.quarter === 9) await runMidterms();
+  if (g.quarter === 9 || g.quarter === 25) await runMidterms();
   if (g.quarter === 13) await beginReelection();
   // The campaign is not a separate game running alongside this one. Every
   // quarter of governing re-prices the map you are defending.
   if (g.camp) refreshCampEnvironment();
-  if (g.quarter > 16) return runReelectionNight();
+  if (g.quarter === 17 && g.term !== 2) return runReelectionNight();
+  if (g.quarter > 32) return finishSecondTerm();
+  render();
+}
+
+/* A second term does not end at a ballot box. It ends. */
+async function finishSecondTerm() {
+  const g = G.gov;
+  await showModal({
+    kicker: 'January 20th', title: 'The Term Ends',
+    text: `Eight years, <b>${g.laws.length}</b> laws and orders, and a successor being sworn in on the
+      steps behind you. Approval closes at <b>${Math.round(g.approval)}%</b>.<br><br>
+      What you passed by statute outlives you. What you did with a pen depends entirely on the person
+      taking the oath, and nobody is asking your opinion about it any more.`,
+    choices: [{ label: 'The verdict of history →' }]
+  });
+  G.screen = 'final';
+  render();
+}
+
+/* ==========================================================================
+   THE SECOND TERM
+   Won on a record, and played with a worse hand: no next election to hold
+   your own party in line, a Congress that starts thinking about the person
+   who replaces you, and the clock audible in every room.
+   ========================================================================== */
+async function beginSecondTerm() {
+  const g = G.gov, p = G.player;
+  g.term = 2;
+  g.quarter = 17;
+  g.weeks = QUARTER_WEEKS;
+  g.done = [];
+  g.camp = null;
+  g.billsDone = [];              // a new Congress, and the vehicles reset
+  g.vehicleUsed = false;
+  g.bipartisan = clamp(g.bipartisan + 6, 0, 60);
+  g.oppEnergy = clamp(g.oppEnergy - 8, 0, 60);
+  g.approval = clamp(g.approval + 3, 8, 92);
+
+  // The new Congress, from the margin you were just re-elected by.
+  const nat = g.reelectionResult.popular * 2 - 1;
+  g.congress = deriveCongress(nat, p.partyId);
+  g.seats = caucusSeats(g.congress, p.partyId);
+  g.capital = quarterlyCapital(g);
+
+  await showModal({
+    kicker: 'The Second Inaugural', title: 'Four More Years, and a Shorter Leash',
+    text: `A new Congress: <b>${g.congress.house.P}–${g.congress.house.O}</b> House,
+      <b>${g.congress.senate.P}–${g.congress.senate.O}</b> Senate. Every legislative vehicle is
+      available again.<br><br>
+      What you no longer have is the thing that made your own party listen. You cannot run again, so
+      every member of it is now quietly working for whoever does — political capital comes in slower,
+      the midterms in two years will be brutal, and the second half of this term is the part where
+      presidents stop passing things and start signing pardons.<br><br>
+      Do the big thing now.`,
+    choices: [{ label: 'Take the oath →' }]
+  });
+  logMsg(`Second inaugural. ${g.congress.house.P}–${g.congress.house.O} House, ${g.congress.senate.P}–${g.congress.senate.O} Senate.`, 'big', 'JAN 20');
+  G.screen = 'govern';
   render();
 }
 
@@ -2070,6 +2582,71 @@ function runReelectionNight() {
   stepNight();
 }
 
+/* ==========================================================================
+   SITUATIONS
+   Things that land on the desk and stay there until somebody spends weeks on
+   them. The point is that the weeks are the same weeks the agenda needs.
+   ========================================================================== */
+async function raiseSituation() {
+  const g = G.gov;
+  const pool = SITUATIONS.filter(s => !g.seenSituations.includes(s.id));
+  if (!pool.length || g.situations.length >= 2) return;
+  const s = pick(pool);
+  g.seenSituations.push(s.id);
+  g.situations.push({ id: s.id, put: 0, due: g.quarter + s.quarters });
+  await showModal({
+    kicker: 'It Lands on the Desk', title: s.name,
+    text: esc(s.desc) + `<br><br>Handling it takes <b>${s.weeks} weeks</b> of your time, and you have
+      <b>${s.quarters} quarter${s.quarters === 1 ? '' : 's'}</b> before it stops being something you
+      can still get in front of. Those are the same weeks the agenda needs, which is the whole of the
+      decision.`,
+    choices: [{ label: 'Understood', tags: effectTags(effectSummary(s.resolved, 'gov')) },
+              { label: 'Let it run and take the consequences', tags: effectTags(effectSummary(s.ignored, 'gov')) }]
+  });
+  logMsg(`${s.name}. It needs ${s.weeks} weeks and it will not wait forever.`, 'bad', `Q${g.quarter}`);
+}
+
+/* Resolve anything finished, and collect on anything that ran out of time. */
+async function advanceSituations() {
+  const g = G.gov;
+  const still = [];
+  for (const live of g.situations) {
+    const s = SITUATIONS.find(x => x.id === live.id);
+    if (live.put >= s.weeks) {
+      applyGovEffect(s.resolved);
+      await showModal({ kicker: 'Resolved', title: s.name, text: esc(s.resolvedText),
+        choices: [{ label: 'Back to the agenda', tags: effectTags(effectSummary(s.resolved, 'gov')) }] });
+      logMsg(`${s.name}: handled.`, 'good', `Q${g.quarter}`);
+    } else if (g.quarter >= live.due) {
+      applyGovEffect(s.ignored);
+      await showModal({ kicker: 'It Got Away From You', title: s.name, text: esc(s.ignoredText),
+        choices: [{ label: 'Back to the agenda', tags: effectTags(effectSummary(s.ignored, 'gov')) }] });
+      logMsg(`${s.name}: you never got in front of it.`, 'bad', `Q${g.quarter}`);
+    } else still.push(live);
+  }
+  g.situations = still;
+}
+
+/* The one place a governing effects object is applied — events and situations
+   both come through here, so the two cannot drift apart on what a key means.
+   `soften` is the perk multiplier on the things a perk can actually blunt. */
+function applyGovEffect(e, soften) {
+  const g = G.gov, p = G.player;
+  const s = soften === undefined ? 1 : soften;
+  if (e.econ) g.econ = clamp(g.econ + e.econ * s, -2.2, 2.2);
+  if (e.approval) g.approval = clamp(g.approval + e.approval * s, 8, 92);
+  if (e.capital) g.capital = Math.max(0, g.capital + e.capital * s);
+  if (e.base) g.baseMorale = clamp(g.baseMorale + e.base, 10, 95);
+  if (e.deficit) g.deficit += e.deficit;
+  if (e.oppEnergy) g.oppEnergy = clamp(g.oppEnergy + e.oppEnergy, 0, 60);
+  if (e.bipartisan) g.bipartisan = clamp(g.bipartisan + e.bipartisan, 0, 60);
+  if (e.hawks) { p.bonusU += e.hawks * 0.004; refreshCandidate(p); }
+  if (e.loyalty) g.loyalty = (g.loyalty || 0) + e.loyalty;
+  if (e.coherence && e.coherence < 0) g.institutionalDamage += 1;
+  if (e.courtRisk) g.institutionalDamage += 1;
+  if (e.policyStrength) for (const k in g.enacted) g.enacted[k] *= (1 + e.policyStrength * 0.3);
+}
+
 async function governingEvent() {
   const g = G.gov, p = G.player;
   const ev = pick(GOVERNING_EVENTS);
@@ -2082,22 +2659,9 @@ async function governingEvent() {
     kicker: `Quarter ${g.quarter}`, title: ev.title, text: esc(text),
     choices: ev.choices.map(c => ({ label: c.label, tags: effectTags(effectSummary(c.eff, 'gov')) }))
   });
-  const e = ev.choices[idx].eff;
-  if (e.loyalty) g.loyalty = (g.loyalty || 0) + e.loyalty;
+  // A retired four-star takes a crisis abroad better than anyone else does.
   const soften = (p.perk === 'commander' && ev.id === 'foreign') ? 0.5 : 1;
-  if (e.econ) g.econ = clamp(g.econ + e.econ * soften, -2.2, 2.2);
-  if (e.approval) g.approval = clamp(g.approval + e.approval * soften, 8, 92);
-  if (e.capital) g.capital = Math.max(0, g.capital + e.capital * soften);
-  if (e.base) g.baseMorale = clamp(g.baseMorale + e.base, 10, 95);
-  if (e.deficit) g.deficit += e.deficit;
-  if (e.oppEnergy) g.oppEnergy += e.oppEnergy;
-  if (e.bipartisan) g.bipartisan += e.bipartisan;
-  if (e.hawks) p.bonusU += 0.01;
-  if (e.coherence) g.institutionalDamage += e.coherence < 0 ? 1 : 0;
-  if (e.courtRisk) g.institutionalDamage += 1;
-  if (e.policyStrength) {
-    for (const k in g.enacted) g.enacted[k] *= (1 + e.policyStrength * 0.3);
-  }
+  applyGovEffect(ev.choices[idx].eff, soften);
   logMsg(`${ev.title} — "${ev.choices[idx].label}"`, '', `Q${g.quarter}`);
 }
 

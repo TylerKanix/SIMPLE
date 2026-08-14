@@ -164,6 +164,8 @@ function renderMap(container, results, opts) {
       t.className = 'tile';
       if (opts.target === abbr) t.classList.add('target');
       if (r && opts.flash && opts.flash === abbr) t.classList.add('called');
+      if (opts.decisive === abbr) t.classList.add('decisive');
+      if (opts.pending && opts.pending.includes(abbr)) t.classList.add('pending');
       const dm = r ? r.margin * playerDir : 0;
       t.style.background = r && !opts.hideResults ? marginColor(dm) : 'var(--bg-3)';
       t.innerHTML = `<span class="ab">${abbr}</span><span class="ev">${st.ev}</span>` +

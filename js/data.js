@@ -490,22 +490,37 @@ const GROUP_BY_ID = Object.fromEntries(GROUPS.map(g => [g.id, g]));
    CAMPAIGN ACTIONS
    ========================================================================== */
 const CAMPAIGN_ACTIONS = [
-  { id: 'ads',     name: 'Buy Broadcast Ads',   cost: 22, days: 0,
+  { id: 'ads',     name: 'Buy Broadcast Ads',   cost: 22, days: 0, group: 'Persuasion',
     desc: 'Blunt, expensive, and the only thing that moves numbers at scale.' },
-  { id: 'digital', name: 'Digital Persuasion',  cost: 9,  days: 0,
+  { id: 'target',  name: 'Targeted Buy',        cost: 13, days: 0, group: 'Persuasion', picksBloc: true,
+    desc: 'Choose a bloc and spend the whole budget on it. Far more efficient per dollar — at exactly one group of people.' },
+  { id: 'digital', name: 'Digital Persuasion',  cost: 9,  days: 0, group: 'Persuasion',
     desc: 'Cheap and precise. Weak on seniors, strong on everyone under 45.' },
-  { id: 'ground',  name: 'Field Organizing',    cost: 14, days: 1,
-    desc: 'Slow to build, but it raises turnout and it does not decay.' },
-  { id: 'rally',   name: 'Hold a Rally',        cost: 4,  days: 1,
-    desc: 'Feeds the base, generates local news, risks a viral moment.' },
-  { id: 'retail',  name: 'Retail Campaigning',  cost: 2,  days: 2,
-    desc: 'Diners and VFW halls. Enormous per-voter effect, tiny reach.' },
-  { id: 'money',   name: 'Fundraising Circuit', cost: 0,  days: 2,
-    desc: 'Two days of call time and closed-door dinners. Someone will film one.' },
-  { id: 'surrogate', name: 'Deploy Surrogates', cost: 6,  days: 0,
+  { id: 'surrogate', name: 'Deploy Surrogates', cost: 6,  days: 0, group: 'Persuasion',
     desc: 'Half the effect of your own time, but you keep the days.' },
-  { id: 'oppo',    name: 'Push Opposition Research', cost: 11, days: 0,
-    desc: 'Drives up their negatives and yours. Rarely a clean trade.' }
+  { id: 'ground',  name: 'Field Organizing',    cost: 14, days: 1, group: 'Mobilization',
+    desc: 'Slow to build, but it raises turnout and it does not decay.' },
+  { id: 'rally',   name: 'Hold a Rally',        cost: 4,  days: 1, group: 'Mobilization',
+    desc: 'Feeds the base, generates local news, risks a viral moment.' },
+  { id: 'retail',  name: 'Retail Campaigning',  cost: 2,  days: 2, group: 'Mobilization',
+    desc: 'Diners and VFW halls. Enormous per-voter effect, tiny reach.' },
+  { id: 'money',   name: 'Fundraising Circuit', cost: 0,  days: 2, group: 'Mobilization',
+    desc: 'Two days of call time and closed-door dinners. Someone will film one.' },
+
+  /* ---- the other campaign ------------------------------------------------
+     Everything here works on them rather than on you, and everything here can
+     rebound. A campaign that only ever attacks ends the cycle with negatives
+     of its own that follow it into office. */
+  { id: 'oppo',    name: 'Push Opposition Research', cost: 11, days: 0, group: 'The Other Campaign',
+    desc: 'Drives up their negatives and yours. Rarely a clean trade.', backfire: 0.18 },
+  { id: 'attack',  name: 'Negative Buy on a Bloc',   cost: 15, days: 0, group: 'The Other Campaign', picksBloc: true,
+    desc: 'Tell one group of people, at length, what the other candidate thinks of them. Suppresses their support more than it raises yours.', backfire: 0.24 },
+  { id: 'bracket', name: 'Bracket Their Rally',      cost: 7,  days: 1, group: 'The Other Campaign',
+    desc: 'Show up in the same media market on the same day and take half their coverage.', backfire: 0.12 },
+  { id: 'forceMap',name: 'Force Them to Defend',     cost: 18, days: 0, group: 'The Other Campaign',
+    desc: 'Buy air in a state they thought was safe. Cheap panic: they pull spending out of a battleground to answer it.', backfire: 0.10 },
+  { id: 'debatePrep', name: 'Opposition Debate Prep', cost: 5, days: 2, group: 'The Other Campaign',
+    desc: 'A week studying their tics and their record. Pays off the next time you share a stage.' }
 ];
 
 /* ==========================================================================
@@ -986,3 +1001,140 @@ GOVERNING_EVENTS.push(
       { label: 'Spend the moment pushing the treaty through the Senate', eff: { capital: -10, bipartisan: 10, approval: 2 } }
     ] }
 );
+
+/* ==========================================================================
+   BIOGRAPHY
+   A candidate is not only a platform. Voters read things into where someone
+   is from, how old they are, and what they did before politics, and those
+   readings are worth real points with particular blocs. Each entry below is
+   an affinity — a standing bonus to how much a bloc likes you, independent of
+   any position you take.
+   ========================================================================== */
+const BIO_TRAITS = [
+  { id: 'veteran', name: 'Served in Uniform',
+    desc: 'Two tours and a discharge you can put in an ad.',
+    aff: { securityHawks: 0.34, ruralTrad: 0.12 }, traits: { gravitas: 3 } },
+  { id: 'union', name: 'Union Family',
+    desc: 'Your father had a local number and you can still say it.',
+    aff: { unionHH: 0.36, blackVoters: 0.06 }, traits: { authenticity: 3 } },
+  { id: 'smalltown', name: 'Small-Town Roots',
+    desc: 'A place with one stoplight and a water tower with your county on it.',
+    aff: { ruralTrad: 0.30, suburbMod: 0.06 } },
+  { id: 'immigrant', name: 'Immigrant Family',
+    desc: 'The first in the family born here, and the story writes itself.',
+    aff: { hispanicVoters: 0.30, urbanProf: 0.10 }, traits: { authenticity: 3 } },
+  { id: 'faith', name: 'Active in a Congregation',
+    desc: 'You can quote scripture without sounding like you were handed the verse.',
+    aff: { evangelical: 0.28, blackVoters: 0.14 } },
+  { id: 'teacher', name: 'Taught School',
+    desc: 'Eleven years in a public classroom, which is eleven years of unimpeachable answers.',
+    aff: { suburbMod: 0.22, youngLeft: 0.10 } },
+  { id: 'founder', name: 'Built a Business',
+    desc: 'You made a payroll, and you will mention it in every debate.',
+    aff: { smallBiz: 0.34, libertarian: 0.12 }, traits: { money: 6 } },
+  { id: 'organizerBio', name: 'Community Organizing',
+    desc: 'You know what a precinct captain does because you were one.',
+    aff: { youngLeft: 0.26, blackVoters: 0.16 } },
+  { id: 'doctor', name: 'Practiced Medicine',
+    desc: 'Nobody argues with a doctor about health care on television.',
+    aff: { seniors: 0.24, suburbMod: 0.12 }, traits: { gravitas: 4 } },
+  { id: 'prosecutor', name: 'Career Prosecutor',
+    desc: 'You have put people in prison, which is either the credential or the problem.',
+    aff: { suburbMod: 0.16, seniors: 0.14, securityHawks: 0.10 },
+    anti: { youngLeft: -0.14 } }
+];
+const BIO_BY_ID = Object.fromEntries(BIO_TRAITS.map(b => [b.id, b]));
+
+/* Age is a real variable and it cuts both ways: it buys gravitas and seniors,
+   it costs you the young, and past a point the coverage is about your health
+   rather than your platform. */
+function ageProfile(age) {
+  return {
+    aff: {
+      youngLeft: clamp((56 - age) / 52, -0.34, 0.30),
+      seniors:   clamp((age - 48) / 70, -0.22, 0.26),
+      urbanProf: clamp((58 - age) / 150, -0.10, 0.09)
+    },
+    gravitas: clamp((age - 46) * 0.42, -8, 15),
+    // Days on the trail are a physical fact, and the press starts counting.
+    stamina: clamp((66 - age) / 14, -1.4, 1.0),
+    scrutiny: age >= 72 ? 'Coverage of your age is now a recurring story.'
+            : age <= 41 ? 'You will be asked whether you are ready in every interview.' : null
+  };
+}
+
+const HOME_STATE_BONUS = 0.170;   // about three points at home
+const HOME_REGION_BONUS = 0.030;
+
+/* ==========================================================================
+   SITUATIONS
+   An event is a fork: you pick, it applies, it is over. A situation is the
+   other kind of thing that happens to a president — it lands on the desk, it
+   does not resolve itself, and it takes weeks you were going to spend on the
+   agenda. Ignoring one is a real option with a real price.
+   ========================================================================== */
+const SITUATIONS = [
+  { id: 'hurricane', name: 'Category Five Landfall', weeks: 5, quarters: 2,
+    desc: 'Two million people without power in a state you lost by nine. FEMA is stood up, the governor is on television hourly, and the federal response is now personally yours whatever the org chart says.',
+    working: 'Running the federal response',
+    resolved: { approval: 5, bipartisan: 7, deficit: 70 },
+    ignored:  { approval: -9, deficit: 40, oppEnergy: 8 },
+    resolvedText: 'The response is competent and visible, and the governor who spent a year attacking you says so on camera.',
+    ignoredText: 'The word used in every retrospective is "abandoned", and it attaches to you rather than to the agency.' },
+
+  { id: 'bank', name: 'A Bank Fails on a Friday', weeks: 4, quarters: 1,
+    desc: 'The fourth-largest regional bank does not open Monday unless something happens over the weekend. Treasury wants an emergency guarantee; your own left calls it a bailout and they are not entirely wrong.',
+    working: 'Managing the failure',
+    resolved: { econ: 1, approval: -2, base: -5, capital: -6 },
+    ignored:  { econ: -2, approval: -7, deficit: 180 },
+    resolvedText: 'Depositors are made whole, contagion stops at two institutions, and nobody thanks you for the crisis that did not happen.',
+    ignoredText: 'Three more banks go over the following fortnight and the word contagion enters the coverage.' },
+
+  { id: 'hostage', name: 'Americans Taken Abroad', weeks: 6, quarters: 3,
+    desc: 'Eleven citizens held by a group your intelligence people describe as "not a state and not quite not a state". The families are on television. Every option is bad and the good one is slow.',
+    working: 'Working the negotiation',
+    resolved: { approval: 7, hawks: 4, capital: -8 },
+    ignored:  { approval: -8, oppEnergy: 12 },
+    resolvedText: 'They come home on a Tuesday, on a plane, and the footage runs for a week.',
+    ignoredText: 'The families stop asking you for help and start asking the other party for it.' },
+
+  { id: 'outbreak', name: 'A Foodborne Outbreak', weeks: 3, quarters: 2,
+    desc: 'Nineteen states, a supply chain nobody can map, and an agency you have not staffed since the transition.',
+    working: 'Standing up the response',
+    resolved: { approval: 2, capital: -3 },
+    ignored:  { approval: -5, econ: -1 },
+    resolvedText: 'Traced to one processor in eight days. The recall is enormous and boring, which is the goal.',
+    ignoredText: 'It takes eleven weeks to trace and the hearings take longer than that.' },
+
+  { id: 'border', name: 'A Surge at the Border', weeks: 5, quarters: 2,
+    desc: 'Encounters triple in six weeks. The facilities are past capacity, the footage is unbearable in both directions, and both parties have found the version of it that helps them.',
+    working: 'Managing the surge',
+    resolved: { approval: 4, base: -6, capital: -7 },
+    ignored:  { approval: -8, oppEnergy: 14 },
+    resolvedText: 'Processing capacity triples, the numbers come down, and nobody on either flank is satisfied.',
+    ignoredText: 'The images run nightly for a month and become the only thing anyone knows about your presidency.' },
+
+  { id: 'cyber', name: 'The Grid Is Probed', weeks: 4, quarters: 2,
+    desc: 'A foreign actor is inside the operational networks of three utilities. Nothing has happened yet. Saying so publicly causes a panic; not saying so is a decision you will have to defend later.',
+    working: 'Running the remediation',
+    resolved: { capital: -5, hawks: 5, approval: 1 },
+    ignored:  { approval: -6, econ: -1, oppEnergy: 8 },
+    resolvedText: 'Quietly remediated across nine months. The disclosure, when it comes, is a paragraph.',
+    ignoredText: 'Six hundred thousand people lose power for two days and the timeline leaks in full.' },
+
+  { id: 'succession', name: 'A Nuclear State Loses Its Leader', weeks: 6, quarters: 3,
+    desc: 'The succession is contested, the arsenal is not obviously under anyone\'s control, and your options range from doing nothing loudly to doing something you cannot undo.',
+    working: 'Managing the succession',
+    resolved: { approval: 5, hawks: 7, capital: -10 },
+    ignored:  { approval: -6, hawks: -6, oppEnergy: 10 },
+    resolvedText: 'A quiet channel, a set of assurances, and a transition that ends without an incident anyone can point to.',
+    ignoredText: 'It resolves without you, which every foreign ministry in the world notices.' },
+
+  { id: 'strikeWave', name: 'A Strike Wave', weeks: 4, quarters: 2,
+    desc: 'Ports, then rail, then two automakers. It is no longer a labour dispute, it is an economic story, and both sides think you are theirs.',
+    working: 'Mediating',
+    resolved: { econ: 1, base: 6, bipartisan: -4, capital: -6 },
+    ignored:  { econ: -2, approval: -4, base: -8 },
+    resolvedText: 'Contracts at three of the four tables, and the fourth settles on the pattern within a month.',
+    ignoredText: 'Eleven weeks of shutdown, and everyone involved agrees the White House was not there.' }
+];
