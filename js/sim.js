@@ -897,6 +897,17 @@ function finalScore(g) {
     deficit: -Math.round(Math.max(0, g.deficit - 1200) / 12),
     institutions: -Math.round(g.institutionalDamage * 12)
   };
+  /* A war is scored on how it ended and on what it cost to end it that way.
+     Winning one is the largest single thing available to a presidency and the
+     casualty term means winning it slowly is still expensive. */
+  if (g.war) {
+    // A war still running when you leave office is graded on the line where it
+    // stood, not written off as a draw: an unresolved war is a result, and it
+    // is the result your successor inherits.
+    const t = g.war.terms || warTerms(g.war);
+    const e = WAR_ENDINGS[t.id];
+    parts.war = (e ? e.grade : 0) - Math.round(g.war.casualties * 7);
+  }
   const total = Object.values(parts).reduce((a, b) => a + b, 0);
   return { parts, total, ps };
 }
@@ -910,3 +921,510 @@ const LEGACY_TIERS = [
   { min: -1e9, title: 'Failed',            text: 'The coalition broke, the agenda stalled, and your own party started running against you.' }
 ];
 function legacyTier(total) { return LEGACY_TIERS.find(t => total >= t.min); }
+
+/* ==========================================================================
+   THE WAR — the engine
+
+   The board is five fronts. The pieces are divisions, munitions, and sorties.
+   The two things being spent that you cannot manufacture are the enemy's
+   willingness to keep fighting and your own country's willingness to let you.
+
+   Both sides give orders for a turn before either sees the other's. The enemy
+   plans at the top of your quarter, against the board as it stood when you
+   last looked at it; you then plan against a board where their dispositions
+   are estimates rather than facts. Resolution is simultaneous. This is why
+   reconnaissance is a resource here and not a flavour word: the preview the
+   game shows you is exact arithmetic on what you know, and what you know is
+   the part that is wrong.
+   ========================================================================== */
+
+/* Four postures, and the same rule that governs the campaign's four: a tool
+   that is a blend of two others is always beaten by one of them, so none of
+   these is on a line between any of the others.
+
+   Assault moves the line and is the only thing that does so quickly.
+   Hold does not move it and is the only thing that makes their attacks
+     expensive rather than merely unsuccessful.
+   Envelop is the only one whose payoff is a function of their weakness rather
+     than your strength — it is enormous against a thin front and actively bad
+     against a dense one, and it cannot be run at all without sorties.
+   Withdraw is the only one that gives you divisions back. It is the correct
+     answer to a front that is a trap, it is a headline at home every time,
+     and it is never satisfying. */
+const WAR_POSTURES = {
+  assault:  { id: 'assault',  name: 'Assault', short: 'ASSLT',
+              tempo: 0.52, atk: 1.00, def: 0.60, muni: 1.00, supply: -0.22,
+              selfCas: 1.00, foeCas: 0.95, digs: -0.40,
+              blurb: 'The only posture that takes ground at speed, and it is priced accordingly: your heaviest casualties, your whole munitions allocation, and a supply line you spend faster than you rebuild it.' },
+
+  hold:     { id: 'hold',     name: 'Hold the Line', short: 'HOLD',
+              tempo: 0.05, atk: 0.28, def: 1.00, muni: 0.32, supply: 0.28,
+              selfCas: 0.40, foeCas: 0.88, digs: 0.30,
+              blurb: 'Takes nothing and is the only thing that makes their offensive cost them more than it costs you. Digs in a little further every quarter, and rebuilds the supply an assault burned.' },
+
+  envelop:  { id: 'envelop',  name: 'Envelop', short: 'ENVLP',
+              tempo: 0.62, atk: 0.52, def: 0.70, muni: 0.52, supply: -0.18,
+              selfCas: 0.46, foeCas: 1.22, digs: -0.22, thin: 1.55, needsAir: true,
+              blurb: 'Goes around rather than through. Devastating against a front they have thinned out and worse than useless against one they have not — and it needs sorties overhead to find the gap at all.' },
+
+  withdraw: { id: 'withdraw', name: 'Withdraw in Contact', short: 'WDRAW',
+              tempo: -0.16, atk: 0.00, def: 0.92, muni: 0.14, supply: 0.62,
+              selfCas: 0.12, foeCas: 0.18, digs: 0, releases: 0.55, breaks: 0.25,
+              blurb: 'Trades ground, which you can buy back, for divisions and supply, which you cannot. Breaks contact — most of what they spend attacking here lands on ground you have already left — releases over half the force to the reserve, and restores the depots. The word used at home is always "retreat".' }
+};
+const WAR_POSTURE_LIST = Object.values(WAR_POSTURES);
+
+/* ---- constants, all of them tuned against the harness rather than guessed -- */
+const WAR_DUG_K      = 0.30;   // what a quarter of digging in is worth on defence
+const WAR_AIR_K      = 0.23;   // per root-sortie, on top of whatever the posture does
+const WAR_AIR_POOL   = 6;      // sorties to allocate across five fronts, per quarter
+const WAR_CAS_K      = 0.110;  // thousands of casualties per division in contact
+const WAR_MUNI_K     = 1.35;   // stockpile burned per division at full assault
+const WAR_LIFT       = 5.0;    // divisions you can move between fronts in a quarter
+const WAR_ELIFT      = 3.0;    // and what they can move
+const WAR_START_DIVS = 19;     // what the standing force gives you on day one — deliberately not enough
+const WAR_REPLACEMENTS = 1.0;  // per quarter, into the reserve — blunts attrition, never reinforces
+const WAR_QUARTERS_HARD = 12;  // nobody sustains one of these for more than three years
+
+/* Command. A quarter in which the president gives the war two weeks is a
+   quarter in which the theatre runs itself; the gradient between two weeks and
+   five is the difference between orders being executed and orders being filed. */
+const WAR_CMD_BASE = 0.62;
+const WAR_CMD_STEP = 0.095;
+const WAR_CMD_MAX_WEEKS = 5;
+const WAR_CMD_ORDER_WEEKS = 2;   // below this you do not get to change anything
+function warCommand(weeks) { return WAR_CMD_BASE + WAR_CMD_STEP * clamp(weeks, 0, WAR_CMD_MAX_WEEKS); }
+
+/* Bounded odds ratio. Deliberately compressive: two-to-one in combat power is
+   an advantage, not a walkover, and the curve says so. */
+function warOdds(a, d) { return clamp((a - d) / (a + d + 0.001), -1, 1); }
+
+/* ---- setting the board ---------------------------------------------------- */
+function createWar(startQuarter) {
+  const w = {
+    startQuarter,
+    turn: 0,
+    fronts: {},
+    reserve: 0,          // set below, once the inherited laydown is on the board
+    enemyCap: 26,        // the theatre they can sustain; strikes attack the refill
+    munitions: 46,
+    muniRate: 11,
+    enemyWill: 100,
+    homeWill: 100,
+    casualties: 0,        // thousands, cumulative
+    foeCasualties: 0,
+    cost: 0,              // billions, direct
+    displaced: 0,
+    escalations: [],
+    coalition: false,
+    strikes: 0,
+    mobilizations: 0,
+    weeksThisQuarter: 0,
+    ended: null,          // 'victory' | 'armistice' | 'collapse'
+    endedTurn: null,
+    terms: null,
+    lastTurn: null        // what the previous resolution did, for the after-action
+  };
+
+  /* The standing force is already deployed when the cable arrives — a president
+     inherits a laydown, they do not choose one. It is deliberately wrong: too
+     much in the highlands, not enough on the corridor. */
+  const opening = { corridor: 5.5, kesar: 3.0, dranov: 4.0, shelf: 4.0, steppe: 2.5 };
+  for (const F of WAR_FRONTS) {
+    w.fronts[F.id] = {
+      id: F.id,
+      line: F.line0,
+      yours: opening[F.id],
+      enemy: F.enemy0,
+      supply: 0.86,
+      dug: 0.20,
+      eDug: 0.35,
+      intel: 0.34,
+      posture: 'hold',
+      ePosture: 'hold',
+      air: 0,
+      lastDelta: 0
+    };
+  }
+  w.reserve = WAR_START_DIVS - warCommitted(w);
+  warPlanEnemy(w);
+  return w;
+}
+
+function warFrontsOf(w) { return WAR_FRONTS.map(F => w.fronts[F.id]); }
+function warCommitted(w) { return warFrontsOf(w).reduce((a, f) => a + f.yours, 0); }
+
+/* How well a front is actually supplied, once distance from the depots and the
+   theatre's own geography are in it. Pushing the line forward is the thing that
+   degrades this, which is why an offensive cannot simply be continued. */
+function warSupplyFactor(f, F) {
+  const reach = clamp(1 - Math.max(0, f.line) * 0.52, 0.46, 1);
+  return 0.40 + 0.60 * clamp(f.supply, 0, 1) * F.supplyBase * reach;
+}
+
+/* Frontage is the whole strategic argument of the board, and it works by
+   capping what a front can absorb rather than by scaling what it returns.
+   Above `frontage x 1.25` the extra divisions are a traffic problem: they are
+   still fed, still counted, and contribute nothing. Twenty divisions in the
+   Kesar passes are a queue.
+
+   That cap is what stops mass being a strategy on its own — for you and for
+   them. The corridor can hold about seven and a half divisions of effect no
+   matter how many either side parks there, so a numerical advantage in the
+   theatre has to be spent somewhere it fits, and the only fronts with room are
+   the wide ones nobody wants.
+
+   Below 1.0 the line is not continuous. The gaps are where an envelopment goes. */
+/* The cap is deliberately well above the 1.0 a coherent line needs. If a front
+   could only ever absorb its own frontage, local superiority would be
+   unreachable and no offensive anywhere would ever be worth mounting — the
+   first version of this had exactly that bug and produced a war that could be
+   lost and not won. Two-to-one is buyable; five-to-one is a car park. */
+const WAR_DENSITY_CAP = 2.00;
+/* They stack lower than you can. Their theatre is bigger and their lift is
+   worse, and the gap between the two caps is the only structural advantage you
+   have: you can build a two-to-one somewhere before they can answer it. Spend
+   it on one axis and it wins the war; spread it and it buys nothing. */
+const WAR_ENEMY_DENSITY = 1.45;
+/* How many fronts they can be offensive on at once. An army has a main effort;
+   this is what makes screening the other three a strategy instead of a wish. */
+const WAR_ENEMY_EFFORTS = 2;
+function warEffective(force, frontage) { return Math.min(force, frontage * WAR_DENSITY_CAP); }
+function warCohesion(force, frontage) { return clamp(force / frontage, 0, WAR_DENSITY_CAP); }
+/* Combat power: how much fits, times a modest premium for how densely it sits. */
+function warMass(force, frontage) {
+  const eff = warEffective(force, frontage);
+  return eff * (0.45 + 0.55 * (eff / frontage));
+}
+
+/* ---- what the enemy is going to do ---------------------------------------
+   Planned at the top of your quarter against the board as it stood, so that
+   the preview you are shown is exact arithmetic and the only thing wrong with
+   it is your estimate of their strength. They reinforce value under threat and
+   they thin whatever they think they can afford to — which is the opening
+   envelopment exists to punish, and the reason massing everywhere is not a
+   strategy but an announcement. */
+function warPlanEnemy(w) {
+  const fs = warFrontsOf(w);
+
+  // Threat: what is this front worth to them, and how much of you is on it.
+  const score = {};
+  for (const F of WAR_FRONTS) {
+    const f = w.fronts[F.id];
+    score[F.id] = F.value * (0.35 + warCohesion(f.yours, F.frontage))
+                + Math.max(0, f.line + 0.15) * 26;
+  }
+  const order = WAR_FRONTS.slice().sort((a, b) => score[b.id] - score[a.id]);
+
+  // Thin the bottom of the list to reinforce the top of it. Strictly
+  // conserving: they have a theatre, not a tap. The floor is a screening
+  // force, not a defence — they will accept a thin steppe to hold the
+  // corridor, and that is the decision you are supposed to notice and punish.
+  // They will not stack a front past what it can absorb, for the same reason
+  // you should not.
+  let lift = WAR_ELIFT;
+  for (let i = order.length - 1; i > 0 && lift > 0.05; i--) {
+    const F = order[i], f = w.fronts[F.id];
+    const floor = F.frontage * (F.value > 18 ? 0.52 : 0.28);
+    const spare = Math.min(lift, Math.max(0, f.enemy - floor));
+    if (spare <= 0.05) continue;
+    let moved = 0;
+    for (const [dest, share] of [[order[0], 0.62], [order[1], 0.38]]) {
+      if (!dest) continue;
+      const d = w.fronts[dest.id];
+      const room = Math.max(0, dest.frontage * WAR_ENEMY_DENSITY - d.enemy);
+      const take = Math.min(spare * share, room);
+      d.enemy += take;
+      moved += take;
+    }
+    f.enemy -= moved;
+    lift -= moved;
+  }
+
+  // Replacements make good losses and no more, and the depots are a target:
+  // this is the number a deep strike campaign is actually attacking.
+  const total = WAR_FRONTS.reduce((a, F) => a + w.fronts[F.id].enemy, 0);
+  const repl = Math.min(Math.max(0, w.enemyCap - total), Math.max(0, 2.1 - w.strikes * 0.50));
+  for (const [dest, share] of [[order[0], 0.55], [order[1] || order[0], 0.45]]) {
+    const d = w.fronts[dest.id];
+    d.enemy = Math.min(dest.frontage * WAR_ENEMY_DENSITY, d.enemy + repl * share);
+  }
+
+  // Orders. They attack where the arithmetic says they should, go around a
+  // front you have left open, and dig in everywhere else.
+  //
+  // Everywhere else is most of the map, and that is the point: an army has a
+  // main effort. Munitions, engineers and air are finite on their side too, so
+  // no more than WAR_ENEMY_EFFORTS fronts are offensive in any quarter and the
+  // rest are holding whatever they are standing on. Screening a front they are
+  // not pushing costs you almost nothing; screening one they are costs you the
+  // front. Which two they have chosen is the single most valuable thing
+  // reconnaissance buys you, and it is why the intelligence band on their
+  // strength is worth closing before you decide where to be thin.
+  const effort = order.slice(0, WAR_ENEMY_EFFORTS).map(F => F.id);
+  for (const F of WAR_FRONTS) {
+    const f = w.fronts[F.id];
+    const yc = warCohesion(f.yours, F.frontage), ec = warCohesion(f.enemy, F.frontage);
+    const ratio = warMass(f.enemy, F.frontage) / Math.max(0.35, warMass(f.yours, F.frontage) * F.defBonus);
+    const offensive = effort.includes(F.id) || f.line > 0.35;
+    if (offensive && yc < 0.62 && ec > 0.55) f.ePosture = 'envelop';
+    else if (offensive && (ratio > 1.05 || f.line > 0.35)) f.ePosture = 'assault';
+    else f.ePosture = 'hold';
+  }
+}
+
+/* ---- one turn of the war -------------------------------------------------
+   `opts.preview` runs the identical arithmetic with the noise switched off and
+   nothing written back, which is how every figure on the war room screen is
+   produced. There is no second, friendlier model. `opts.enemyScale` re-runs it
+   against the top and bottom of your intelligence estimate, which is how the
+   band around each of those figures is produced. */
+function resolveWarTurn(w, ctx, opts) {
+  opts = opts || {};
+  const preview = !!opts.preview;
+  const scale = opts.enemyScale === undefined ? 1 : opts.enemyScale;
+  const cmd = warCommand(w.weeksThisQuarter);
+
+  // Munitions. Everything drawn against a stockpile that will not cover it is
+  // scaled back, so running dry is a general degradation and not a lockout.
+  let need = 0;
+  for (const F of WAR_FRONTS) {
+    const f = w.fronts[F.id];
+    need += f.yours * WAR_POSTURES[f.posture].muni * WAR_MUNI_K;
+  }
+  const muniHave = w.munitions + w.muniRate;
+  const muniFactor = need <= muniHave ? 1 : clamp(muniHave / Math.max(0.01, need), 0.34, 1);
+
+  const out = {
+    fronts: {}, casualties: 0, foeCasualties: 0, progress: 0, ground: 0,
+    muniSpent: Math.min(need, muniHave), muniFactor, cmd, released: 0
+  };
+
+  for (const F of WAR_FRONTS) {
+    const f = w.fronts[F.id];
+    const P = WAR_POSTURES[f.posture], E = WAR_POSTURES[f.ePosture];
+    const enemy = f.enemy * scale;
+
+    const yc = warCohesion(f.yours, F.frontage);
+    const ec = warCohesion(enemy, F.frontage);
+    const myMass = warMass(f.yours, F.frontage);
+    const eMass = warMass(enemy, F.frontage);
+    const sup = warSupplyFactor(f, F);
+    const airMul = 1 + WAR_AIR_K * Math.sqrt(f.air);
+
+    // Envelopment is a bet on their thinness and it needs eyes on the gap.
+    let thin = 1;
+    if (P.id === 'envelop') {
+      thin = Math.max(0.30, 1 + P.thin * (1.0 - ec));
+      if (f.air <= 0) thin *= 0.42;
+    }
+    let eThin = 1;
+    if (E.id === 'envelop') eThin = Math.max(0.30, 1 + WAR_POSTURES.envelop.thin * (1.0 - yc));
+
+    // Command reaches the defence as well as the offence, but less of it: a
+    // theatre nobody in Washington has looked at for three months still digs.
+    const dCmd = 0.72 + 0.28 * cmd;
+
+    const Pa = myMass * P.atk * sup * cmd * airMul * thin * muniFactor;
+    const Pd = myMass * P.def * F.defBonus * (1 + WAR_DUG_K * f.dug) * (0.55 + 0.45 * sup) * dCmd;
+    const Ea = eMass * E.atk * eThin;
+    const Ed = eMass * E.def * F.defBonus * (1 + WAR_DUG_K * f.eDug);
+
+    const oY = warOdds(Pa, Ed), oE = warOdds(Ea, Pd);
+    let pushY;
+    if (P.id === 'withdraw') pushY = P.tempo * (1.30 - 0.45 * cmd);
+    else pushY = P.tempo * cmd * (oY > 0 ? oY : oY * 0.55);
+    let pushE = E.id === 'withdraw' ? E.tempo : E.tempo * (oE > 0 ? oE : oE * 0.55);
+    /* Breaking contact is the whole point of a fighting withdrawal: they are
+       advancing into ground you have left rather than through a force that is
+       standing on it. Without this, withdrawing cedes everything holding would
+       have ceded *and* the ground you gave up deliberately, which made it
+       strictly worse than holding in every board state the harness could
+       find — a fourth option nobody would ever take. */
+    if (P.breaks && pushE > 0) pushE *= P.breaks;
+
+    let delta = pushY - pushE;
+    if (!preview) delta += gauss(0, 0.035);
+
+    // Casualties are a function of contact, of how exposed your posture is, and
+    // of how badly the attack went. Terrain scales the whole thing.
+    // Only what is actually in contact bleeds. Divisions queued behind a full
+    // front are not fighting, which is the one mercy of over-committing.
+    const contact = Math.min(warEffective(f.yours, F.frontage), warEffective(enemy, F.frontage)) * F.attrition;
+    const yourCas = contact * WAR_CAS_K * P.selfCas * (0.58 + 0.72 * E.atk)
+      * (1 + Math.max(0, -oY) * 0.85) / (1 + WAR_DUG_K * f.dug);
+    const foeCas = contact * WAR_CAS_K * P.foeCas * (0.58 + 0.72 * P.atk) * muniFactor
+      * (1 + Math.max(0, -oE) * 0.85) / (1 + WAR_DUG_K * f.eDug);
+
+    const newLine = clamp(f.line + delta, -1, 1);
+    out.fronts[F.id] = {
+      delta: newLine - f.line, line: newLine, yourCas, foeCas,
+      oY, oE, ePosture: f.ePosture, thin,
+      released: P.releases ? f.yours * P.releases : 0
+    };
+    out.casualties += yourCas;
+    out.foeCasualties += foeCas;
+    out.progress += (newLine - f.line) * F.value;
+    out.ground += newLine * F.value;
+  }
+
+  if (preview) return out;
+
+  // ---- write it back -----------------------------------------------------
+  for (const F of WAR_FRONTS) {
+    const f = w.fronts[F.id], r = out.fronts[F.id], P = WAR_POSTURES[f.posture];
+    f.lastDelta = r.delta;
+    f.line = r.line;
+    f.supply = clamp(f.supply + P.supply * (0.6 + 0.4 * F.supplyBase), 0.12, 1);
+    f.dug = clamp(f.dug + P.digs, 0, 1.0);
+    // Whoever lost ground is not dug into it any more; whoever held is.
+    if (r.delta > 0.02) f.eDug = clamp(f.eDug - 0.45, 0, 1.0);
+    if (r.delta < -0.02) f.dug = clamp(f.dug - 0.40, 0, 1.0);
+    if (WAR_POSTURES[f.ePosture].id === 'hold') f.eDug = clamp(f.eDug + 0.30, 0, 1.0);
+    // Reconnaissance decays. What you knew last quarter is last quarter's.
+    f.intel = clamp(f.intel * 0.62 + 0.26 * Math.sqrt(f.air), 0, 0.96);
+    if (r.released) { f.yours -= r.released; w.reserve += r.released; out.released += r.released; }
+    // Attrition takes divisions off the board on both sides.
+    f.yours = Math.max(0.25, f.yours - r.yourCas * 0.085);
+    f.enemy = Math.max(0.20, f.enemy - r.foeCas * 0.085);
+  }
+
+  // The replacement pipeline: enough to blunt attrition, never enough to
+  // reinforce with. Divisions come back as reserve and still have to be moved.
+  w.reserve += WAR_REPLACEMENTS;
+  w.munitions = clamp(w.munitions + w.muniRate - out.muniSpent, 0, 140);
+  w.casualties += out.casualties;
+  w.foeCasualties += out.foeCasualties;
+  w.turn++;
+
+  // ---- the two clocks ----------------------------------------------------
+  const held = warFrontsOf(w).reduce((a, f, i) => a + Math.max(0, f.line) * WAR_FRONTS[i].value, 0);
+  const stalled = Math.abs(out.progress) < 1.2;
+
+  w.enemyWill = clamp(w.enemyWill
+    - out.progress * 1.75
+    - out.foeCasualties * 1.20
+    - held * 0.100
+    + (stalled ? 1.15 : 0)
+    /* Every strike campaign buys a lump of their will now and hands some back
+       every quarter afterwards, because the footage recruits for them — and
+       the handing back compounds, so a fourth campaign is a way of losing the
+       argument on their behalf. One late is worth three early. */
+    + Math.pow(w.strikes, 1.35) * 0.55, 0, 130);
+
+  w.homeWill = clamp(w.homeWill
+    - 2.0
+    - out.casualties * 2.00
+    - w.turn * 0.28
+    - (stalled ? 2.1 : 0)
+    + out.progress * 0.72
+    + (w.coalition ? 1.9 : 0)
+    + (ctx.approval - 50) * 0.085
+    /* Goodwill decays toward nothing over a term unless a president spends
+       quarters rebuilding it, so this is bounded below: a war should not be
+       unwinnable because the opposition leader stopped taking meetings. */
+    + clamp((ctx.bipartisan - 12) * 0.045, -0.5, 1.5), 0, 130);
+
+  const spend = 52 + warCommitted(w) * 7.5 + out.muniSpent * 1.1;
+  w.cost += spend;
+  w.displaced += 0.24 + Math.max(0, -out.progress) * 0.035;
+
+  w.lastTurn = out;
+  if (w.enemyWill <= 0) { w.ended = 'victory'; w.endedTurn = w.turn; }
+  else if (w.homeWill <= 0) { w.ended = 'collapse'; w.endedTurn = w.turn; }
+  else if (w.turn >= WAR_QUARTERS_HARD) { w.ended = 'exhaustion'; w.endedTurn = w.turn; }
+  else warPlanEnemy(w);
+
+  return out;
+}
+
+/* The decisions that are not on the board. The engine owns what each one does
+   to the war; the caller owns what it costs at home, which is the `eff` object
+   on the escalation and goes through the same applier as every event in the
+   game. */
+function warEscalate(w, id) {
+  const E = WAR_ESCALATIONS.find(x => x.id === id);
+  if (!E || (!E.repeatable && w.escalations.includes(id))) return null;
+  w.escalations.push(id);
+  if (id === 'mobilize')   { w.reserve += 6; w.mobilizations++; }
+  if (id === 'production') { w.muniRate += 9; w.munitions += 20; }
+  if (id === 'coalition')  { w.coalition = true; w.reserve += 4; }
+  if (id === 'strike') {
+    /* The first campaign is worth the most and every one after it is worth
+       less, because the targets that matter are finite and they disperse what
+       is left. Uncapped, this was the dominant line in the game: twelve
+       consecutive strike campaigns won every war in the harness in eight
+       quarters and at two-thirds of the casualties, which is not a decision,
+       it is a button. The durable value is the second line — their theatre
+       shrinks and their replacements slow — and that is bounded by a floor. */
+    w.enemyWill = clamp(w.enemyWill - 9 / (1 + 0.55 * w.strikes), 0, 130);
+    w.strikes++;
+    w.enemyCap = Math.max(17, w.enemyCap - 2.5);
+  }
+  return E;
+}
+function warEscalationAvailable(w, E, g) {
+  if (E.terminal) return true;
+  if (!E.repeatable && w.escalations.includes(E.id)) return false;
+  if (E.needs && g) for (const k in E.needs) if ((g[k] || 0) < E.needs[k]) return false;
+  return true;
+}
+
+/* What the map is worth if you stop now. The line on the ground is the whole
+   of your negotiating position — this is the same arithmetic whether you open
+   a channel deliberately or the House opens one for you. */
+function warTerms(w) {
+  /* Measured against the line on the morning the cable arrived, not against
+     zero. You inherit a front that is already going badly, so an absolute
+     count would make "status quo ante" — the literal meaning of which is the
+     line you started from — unreachable by construction. Restoring the
+     frontier is a result, and this is the arithmetic that says so.
+
+     The denominator is half the theatre's value rather than all of it: nobody
+     is taking all five fronts, and a scale on which the achievable maximum is
+     a fifth of the range is a scale that reports every real campaign as a
+     draw. */
+  const gained = warFrontsOf(w).reduce((a, f, i) => a + (f.line - WAR_FRONTS[i].line0) * WAR_FRONTS[i].value, 0);
+  const decisive = WAR_FRONTS.reduce((a, F) => a + F.value, 0) * 0.5;
+  const pos = clamp(gained / decisive, -1, 1);
+  const willEdge = (w.enemyWill - w.homeWill) / 100;   // negative if you are the tired one
+  const s = pos * 0.72 + willEdge * -0.28;
+  if (s > 0.34) return { id: 'victory', label: 'Aravandi capitulation', score: s };
+  if (s > 0.14) return { id: 'favourable', label: 'Settled on your terms', score: s };
+  if (s > -0.08) return { id: 'status', label: 'Status quo ante', score: s };
+  if (s > -0.30) return { id: 'poor', label: 'Settled on their terms', score: s };
+  return { id: 'rout', label: 'A withdrawal dressed as a settlement', score: s };
+}
+
+/* The intelligence picture, which is what the player actually plans against.
+   The band is the honest width of the estimate, and sorties narrow it. */
+function warEstimate(f) {
+  const err = (1 - f.intel) * 0.42;
+  return { mid: f.enemy, lo: f.enemy * (1 - err), hi: f.enemy * (1 + err), err };
+}
+
+/* What the war did to the presidency, applied once per quarter it is live.
+
+   The progress term is weighted heavily enough that a war which is going well
+   is approval-positive — the rally is real, and without it the model had a
+   doom loop with no exit: any war at all dragged approval down, low approval
+   drained the country's patience faster, and a president winning on the ground
+   still lost the war at home. A quarter of gains should buy you the standing
+   to fight the next one. A quarter of casualties for nothing should not. */
+function warPoliticalEffect(w, out) {
+  return {
+    approval: clamp(out.progress * 0.42 - out.casualties * 0.52 - 0.30, -7, 7),
+    base: -(out.casualties * 0.46) - 0.55,
+    deficit: 52 + warCommitted(w) * 7.5 + out.muniSpent * 1.1,
+    oppEnergy: Math.abs(out.progress) < 1.2 ? 2.4 : -1.6,
+    hawks: clamp(out.progress * 0.22, -2, 3)
+  };
+}
+
+const WAR_ENDINGS = {
+  victory:    { grade: 620, title: 'They Capitulate' },
+  favourable: { grade: 300, title: 'A Settlement on Your Terms' },
+  status:     { grade: 40,  title: 'Status Quo Ante' },
+  poor:       { grade: -190, title: 'A Settlement on Theirs' },
+  rout:       { grade: -420, title: 'The House Cuts Off the Money' }
+};

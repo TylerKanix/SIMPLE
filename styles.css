@@ -977,3 +977,126 @@ tbody tr.on { background: #1d1810; }
   font-family: var(--mono); font-size: 9.5px; color: var(--gold);
   letter-spacing: .14em;
 }
+
+/* ==========================================================================
+   THE WAR
+   A different surface from the rest of the game on purpose: the campaign
+   screens are a decision desk and this is a situation room. Same palette,
+   same density, but the accent is spent on the line rather than on 270.
+   ========================================================================== */
+.war-banner {
+  display: flex; align-items: center; gap: 12px;
+  border: 1px solid #6b332d; background: linear-gradient(90deg, #1e1311, var(--bg-2));
+  border-radius: 5px; padding: 11px 14px; margin-bottom: 14px;
+}
+.war-banner .wb-k {
+  font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--gop-lt);
+  font-weight: 700;
+}
+.war-banner .wb-t { font-size: 13px; font-weight: 500; }
+.war-banner .wb-n { font-size: 11px; color: var(--text-mute); margin-top: 1px; }
+
+/* ---- the two clocks ---- */
+.wills { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; }
+.willrow { display: grid; grid-template-columns: 132px 1fr 30px 92px; align-items: center; gap: 8px; }
+.willrow .wk { font-size: 11px; color: var(--text-dim); }
+.willrow .wt { height: 9px; background: var(--bg-3); border-radius: 2px; overflow: hidden; }
+.willrow .wt i { display: block; height: 100%; transition: width .3s; }
+.willrow .wt i.e { background: var(--gop); }
+.willrow .wt i.h { background: var(--gold); }
+.willrow .wv { font-size: 11px; text-align: right; }
+.willrow .wn { font-size: 10px; color: var(--text-mute); }
+
+/* ---- the front line ---- */
+.frontbar { position: relative; height: 16px; margin: 5px 0 2px; }
+.frontbar i { position: absolute; }
+.frontbar .grd {
+  left: 0; right: 0; top: 6px; height: 4px; border-radius: 2px;
+  background: linear-gradient(90deg, #5c2b25, #2c3746 46%, #2c3746 54%, #23543a);
+}
+.frontbar .chg { top: 6px; height: 4px; opacity: .5; border-radius: 2px; }
+.frontbar .was { top: 2px; width: 1px; height: 12px; background: var(--text-mute); }
+.frontbar .now {
+  top: 1px; width: 3px; height: 14px; margin-left: -1px; background: var(--text);
+  border-radius: 1px; transition: left .3s;
+}
+.frontbar .now.g { background: var(--green-lt); }
+.frontbar .now.r { background: var(--gop-lt); }
+.frontbar .proj {
+  top: 4px; width: 2px; height: 8px; background: var(--gold); opacity: .85;
+}
+.front-ends {
+  display: flex; justify-content: space-between; font-size: 9px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-mute);
+}
+
+/* ---- a front, on the war room screen ---- */
+.front {
+  border: 1px solid var(--line); border-radius: 5px; background: var(--bg-2);
+  padding: 11px 13px; margin-bottom: 9px;
+}
+.front.main { border-color: var(--gold); }
+.front .fh { display: flex; align-items: baseline; gap: 8px; }
+.front .fh .fn { font-size: 13px; font-weight: 500; }
+.front .fh .ft { font-size: 10.5px; color: var(--text-mute); }
+.front .fh .spacer { flex: 1; }
+.front .fh .fv { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); }
+.front .fnote { font-size: 11px; color: var(--text-dim); line-height: 1.45; margin: 3px 0 6px; }
+.front .fstats {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; font-family: var(--mono); font-size: 10.5px;
+  color: var(--text-dim); margin-top: 5px;
+}
+.front .fstats b { color: var(--text); font-weight: 500; }
+.front .fstats .warn { color: var(--amber); }
+
+/* Posture buttons: four, always all four, greyed when unavailable rather than
+   hidden, because which ones are unavailable is information. */
+.postures { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+.pbtn {
+  border: 1px solid var(--line); background: var(--bg-3); border-radius: 4px;
+  padding: 7px 8px; cursor: pointer; text-align: left; color: var(--text); font: inherit;
+}
+.pbtn:hover { background: var(--bg-4); border-color: var(--line-2); }
+.pbtn.on { border-color: var(--gold); background: #241d0f; }
+.pbtn.bad { opacity: .62; }
+.pbtn .pn { font-size: 10.5px; font-weight: 600; letter-spacing: .04em; }
+.pbtn .pv { font-family: var(--mono); font-size: 11px; margin-top: 3px; }
+.pbtn .pv.g { color: var(--green-lt); }
+.pbtn .pv.r { color: var(--gop-lt); }
+.pbtn .pb { font-size: 9.5px; color: var(--text-dim); margin-top: 2px; }
+
+/* Force and sorties: steppers, because these are integers you nudge. */
+.stepper { display: flex; align-items: center; gap: 5px; }
+.stepper button {
+  width: 20px; height: 20px; border: 1px solid var(--line); background: var(--bg-3);
+  color: var(--text); border-radius: 3px; cursor: pointer; font-size: 13px; line-height: 1;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+}
+.stepper button:hover:not(:disabled) { background: var(--bg-4); }
+.stepper button:disabled { opacity: .3; cursor: not-allowed; }
+.stepper .sv { font-family: var(--mono); font-size: 11.5px; min-width: 34px; text-align: center; }
+
+.intel-band {
+  display: inline-block; height: 4px; border-radius: 2px; background: var(--gop);
+  opacity: .55; vertical-align: middle;
+}
+/* Escalations stack rather than sitting in columns: the rail is too narrow to
+   put a description and four effect tags beside each other, and squeezing them
+   made the tags overlap the prose. */
+.esc {
+  border: 1px solid var(--line); border-radius: 5px; background: var(--bg-3);
+  padding: 9px 11px; margin-bottom: 8px; cursor: pointer;
+}
+.esc:hover:not(.stripped) { background: var(--bg-4); border-color: var(--line-2); }
+.esc.stripped { opacity: .42; cursor: not-allowed; }
+.esc .top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.esc .nm { font-size: 12.5px; font-weight: 500; }
+.esc .cost { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); white-space: nowrap; }
+.esc .note { font-size: 11px; color: var(--text-mute); line-height: 1.45; margin-top: 3px; }
+.esc .blocked { font-size: 10.5px; color: var(--amber); margin-top: 4px; }
+
+@media (max-width: 900px) {
+  .postures { grid-template-columns: repeat(2, 1fr); }
+  .willrow { grid-template-columns: 100px 1fr 28px; }
+  .willrow .wn { display: none; }
+}

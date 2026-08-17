@@ -353,3 +353,41 @@ function tickerBar(items, live) {
 function statBlock(k, v, cls) {
   return `<div class="stat ${cls || ''}"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`;
 }
+
+/* ---- the front line ------------------------------------------------------
+   One bar per front. The ground runs from what they hold on the left to what
+   you hold on the right; the marker is where the line sits now and the ghost
+   is where it sat when the war began, so that "you have taken back half of
+   what you lost here" is a thing you can see rather than compute. */
+function frontBar(f, F, opts) {
+  opts = opts || {};
+  const at = x => ((x + 1) / 2 * 100).toFixed(1);
+  const now = at(f.line), was = at(F.line0);
+  const gained = f.line - F.line0;
+  const fill = f.line >= F.line0
+    ? `left:${was}%;width:${Math.max(0, +now - +was).toFixed(1)}%;background:var(--green)`
+    : `left:${now}%;width:${Math.max(0, +was - +now).toFixed(1)}%;background:var(--gop)`;
+  return `<div class="frontbar" title="${esc(F.name)} — the line is at ${f.line.toFixed(2)}, and it started at ${F.line0.toFixed(2)}">
+    <i class="grd"></i>
+    <i class="chg" style="${fill}"></i>
+    <i class="was" style="left:${was}%"></i>
+    <i class="now ${gained > 0.03 ? 'g' : gained < -0.03 ? 'r' : ''}" style="left:${now}%"></i>
+    ${opts.delta ? `<i class="proj" style="left:${at(clamp(f.line + opts.delta, -1, 1))}%"></i>` : ''}
+  </div>`;
+}
+
+/* The two clocks, side by side, because the whole war is which one empties
+   first and nothing else. */
+function willBars(w) {
+  const row = (k, v, cls, note) => `<div class="willrow">
+    <span class="wk">${esc(k)}</span>
+    <span class="wt"><i class="${cls}" style="width:${clamp(v, 0, 100).toFixed(0)}%"></i></span>
+    <span class="wv mono">${Math.round(v)}</span>
+    <span class="wn">${esc(note)}</span></div>`;
+  return `<div class="wills">
+    ${row('Their will to fight', w.enemyWill, 'e',
+      w.enemyWill > 70 ? 'dug in' : w.enemyWill > 40 ? 'strained' : w.enemyWill > 18 ? 'cracking' : 'about to break')}
+    ${row('Your country\'s patience', w.homeWill, 'h',
+      w.homeWill > 70 ? 'behind you' : w.homeWill > 40 ? 'restless' : w.homeWill > 18 ? 'turning' : 'gone')}
+  </div>`;
+}

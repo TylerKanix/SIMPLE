@@ -542,3 +542,68 @@ function govActionPreview(a, g, p) {
   }
   return [];
 }
+
+/* ==========================================================================
+   WAR ORDERS
+   Same contract as everything else in this file: to price an alternative,
+   change exactly one input, run the engine that will actually resolve the
+   turn, and put the original back. There is no second model.
+
+   The difference here is that the arithmetic is exact and the *inputs* are
+   not. You are shown a band rather than a figure, and the band is the width
+   of your own intelligence estimate — the same preview run against the top
+   and the bottom of what reconnaissance can tell you about their strength.
+   Sorties narrow it. A front you have not looked at in three quarters
+   produces an honest, useless answer.
+   ========================================================================== */
+function warOrderPreview(w, frontId, postureId, air) {
+  const f = w.fronts[frontId];
+  const p0 = f.posture, a0 = f.air;
+  f.posture = postureId;
+  if (air !== undefined) f.air = air;
+
+  const est = warEstimate(f);
+  const at = s => resolveWarTurn(w, null, { preview: true, enemyScale: s }).fronts[frontId];
+  const mid = at(1);
+  const lo = at(est.mid > 0.01 ? est.lo / est.mid : 1);   // they are weaker than feared
+  const hi = at(est.mid > 0.01 ? est.hi / est.mid : 1);   // they are stronger
+
+  f.posture = p0; f.air = a0;
+  return {
+    delta: mid.delta,
+    // `hi` is the pessimistic case, so it is the low end of the ground you take.
+    deltaLo: Math.min(hi.delta, lo.delta), deltaHi: Math.max(hi.delta, lo.delta),
+    cas: mid.yourCas, casHi: Math.max(lo.yourCas, hi.yourCas),
+    foeCas: mid.foeCas,
+    released: mid.released,
+    odds: mid.oY,
+    band: Math.abs(lo.delta - hi.delta),
+    muni: f.yours * WAR_POSTURES[postureId].muni * WAR_MUNI_K
+  };
+}
+
+/* The whole theatre as currently ordered, which is what the commit button is
+   actually committing to. */
+function warTurnPreview(w) {
+  const out = resolveWarTurn(w, null, { preview: true });
+  const held = warFrontsOf(w).reduce((a, f, i) =>
+    a + Math.max(0, f.line + out.fronts[WAR_FRONTS[i].id].delta) * WAR_FRONTS[i].value, 0);
+  const stalled = Math.abs(out.progress) < 1.2;
+  return {
+    out,
+    enemyWill: -out.progress * 1.75 - out.foeCasualties * 1.20 - held * 0.100
+      + (stalled ? 1.15 : 0) + Math.pow(w.strikes, 1.35) * 0.55,
+    shortfall: out.muniFactor < 1 ? 1 - out.muniFactor : 0
+  };
+}
+
+/* Where the weight is, in a sentence. Used for the line under the map. */
+function warPosture(w) {
+  const fs = warFrontsOf(w);
+  const gaining = fs.filter((f, i) => f.line > WAR_FRONTS[i].line0 + 0.05).length;
+  const losing = fs.filter((f, i) => f.line < WAR_FRONTS[i].line0 - 0.05).length;
+  if (gaining >= 3) return 'You are ahead of the line you inherited across most of the theatre.';
+  if (gaining > losing) return 'You are ahead on more of the theatre than you have given up.';
+  if (losing >= 3) return 'You are behind the line you inherited on most of the theatre.';
+  return 'The theatre is roughly where it was when the cable arrived.';
+}

@@ -1138,3 +1138,103 @@ const SITUATIONS = [
     resolvedText: 'Contracts at three of the four tables, and the fourth settles on the pattern within a month.',
     ignoredText: 'Eleven weeks of shutdown, and everyone involved agrees the White House was not there.' }
 ];
+
+/* ==========================================================================
+   THE WAR
+
+   Most presidencies do not have one. This one has a one-in-ten chance of it,
+   rolled once at the inauguration and then fixed, so that a seed either
+   contains a war or does not and a run can be argued about either way.
+
+   A situation is a thing you spend weeks on until it goes away. A war is not
+   that. It has a board, an opponent who moves on it, and two clocks: how much
+   longer they will keep fighting, and how much longer you will be allowed to.
+   You do not win it by putting enough weeks in. You win it by making the first
+   clock run out before the second one does.
+
+   The theatre and the belligerents are invented. Nothing here is a claim about
+   any real conflict, and the geography is drawn for the strategic problem it
+   poses rather than after anywhere in particular.
+   ========================================================================== */
+
+/* Rolled once, at the inauguration. */
+const WAR_ODDS = 0.10;
+
+const WAR_THEATRE = {
+  ally: 'Vasterny',
+  foe: 'Aravand',
+  foeAdj: 'Aravandi',
+  cable: 'Aravandi armour crossed the Vasterny frontier at four in the morning, local time, on three axes. Vasterny has invoked the mutual defence article. The treaty says you have already decided this.',
+  brief: 'Five fronts, a treaty obligation you inherited, and an adversary with a nuclear arsenal and a shorter supply line than yours. Nobody is going to march on their capital. The war ends when one government decides it costs more than it is worth, and one of those governments is yours.'
+};
+
+/* Each front is a different strategic problem, and the difference is mostly
+   `frontage`: how much force it takes to hold a coherent line there at all.
+   A mountain pass is held by two divisions and cannot be taken by twenty. The
+   steppe needs nine to be a line rather than a suggestion, which is why it is
+   the front everyone leaves thin and the front that gets turned. */
+const WAR_FRONTS = [
+  { id: 'corridor', name: 'The Northern Corridor', terrain: 'Industrial plain',
+    frontage: 6.0, value: 26, defBonus: 1.06, attrition: 1.16, supplyBase: 0.80,
+    enemy0: 9.6, line0: -0.40,
+    blurb: 'Their main axis and the shortest road to the Vasterny capital. Rail, refineries, and no ground worth the name. Whatever you do not put here, they will notice.' },
+
+  { id: 'kesar', name: 'The Kesar Highlands', terrain: 'Mountain',
+    frontage: 2.0, value: 11, defBonus: 1.62, attrition: 0.74, supplyBase: 0.58,
+    enemy0: 3.4, line0: -0.08,
+    blurb: 'Held by whoever got to the ridge first, and held cheaply. Two divisions are a wall here and twenty are a queue. The economy-of-force front, if you can bear to treat it as one.' },
+
+  { id: 'dranov', name: 'The Dranov River Line', terrain: 'River crossing',
+    frontage: 4.0, value: 19, defBonus: 1.34, attrition: 1.05, supplyBase: 0.92,
+    enemy0: 6.2, line0: -0.24,
+    blurb: 'A crossing under fire, which is the most expensive thing infantry does. Behind it your supply is better than anywhere else in the theatre — the depots are ninety miles back and on your side of the water.' },
+
+  { id: 'shelf', name: 'The Coastal Shelf', terrain: 'Open littoral',
+    frontage: 5.0, value: 22, defBonus: 0.86, attrition: 1.22, supplyBase: 0.96,
+    enemy0: 5.8, line0: -0.18,
+    blurb: 'Flat, dry, and overlooked by your ships. Armour works here and so does everything that kills armour. The two deepwater ports are the reason the theatre is supplied at all.' },
+
+  { id: 'steppe', name: 'The Southern Steppe', terrain: 'Open steppe',
+    frontage: 9.0, value: 14, defBonus: 0.78, attrition: 0.92, supplyBase: 0.66,
+    enemy0: 3.9, line0: -0.10,
+    blurb: 'Four hundred kilometres of nothing, and a line here is a series of opinions with gaps between them. Worth little to hold and everything to get behind — their whole northern effort is supplied across it.' }
+];
+const WAR_FRONT_BY_ID = Object.fromEntries(WAR_FRONTS.map(f => [f.id, f]));
+
+/* The decisions that are not about the board. Each one is a thing a president
+   can do that a theatre commander cannot, and each one is paid for at home. */
+const WAR_ESCALATIONS = [
+  { id: 'mobilize', name: 'Call Up the Reserves', capital: 8, weeks: 1, repeatable: true,
+    desc: 'Six more divisions, and six more sets of families finding out at a kitchen table. The mobilization is legal, popular in the abstract, and detested in the particular.',
+    eff: { approval: -3, base: -7, deficit: 95 } },
+
+  { id: 'production', name: 'Invoke Wartime Production', capital: 6, weeks: 2, repeatable: false,
+    desc: 'Priority ratings on the shell plants and the interceptor lines. The stockpile stops being the thing that decides how many quarters you can fight for.',
+    eff: { deficit: 165, econ: 0.35 } },
+
+  { id: 'coalition', name: 'Bring In the Alliance', capital: 12, weeks: 3, repeatable: false,
+    needs: { bipartisan: 16 },
+    desc: 'Four allied divisions, shared basing, and — the part that actually matters — a war that is no longer only yours to answer for. Requires goodwill you may not have spent a quarter building.',
+    eff: { bipartisan: -6, approval: 2 } },
+
+  { id: 'strike', name: 'Deep Strike Campaign', capital: 9, weeks: 2, repeatable: true,
+    desc: 'Their depots, their bridges, their grid. It shortens the war and it is the part of the war that will be litigated for thirty years. Every strike is also a recruiting poster on their side of the line.',
+    eff: { base: -9, approval: 1, deficit: 40, courtRisk: 1 } },
+
+  { id: 'talks', name: 'Open a Channel', capital: 4, weeks: 1, repeatable: false, terminal: true,
+    desc: 'A third country, a hotel, and a set of terms that will be exactly as good as the line on the map the morning you sit down. Ending it is a decision, not a default.',
+    eff: {} }
+];
+
+/* The war writes to the same ledger as everything else, because it is the same
+   country. Reported without a verdict, like the rest of it. */
+const WAR_OUTCOMES = [
+  { id: 'warDead',    name: 'American service members killed', unit: 'K', dp: 1 },
+  { id: 'warCost',    name: 'Direct cost of the war',          unit: 'B', dp: 0 },
+  { id: 'displaced',  name: 'Vasterny civilians displaced',    unit: 'M', dp: 1 }
+];
+
+/* Folded into the main ledger so the governing screen and the final accounting
+   pick them up without knowing the war exists. Every ledger line renders only
+   once it is non-zero, so a presidency without a war never shows them. */
+for (const o of WAR_OUTCOMES) { OUTCOMES.push(o); OUTCOME_BY_ID[o.id] = o; }

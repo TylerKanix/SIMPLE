@@ -28,7 +28,7 @@ function render() {
   ({
     title: scrTitle, setup: scrSetup, platform: scrPlatform, primary: scrPrimary,
     general: scrGeneral, night: scrNight, results: scrResults, govern: scrGovern,
-    bill: scrBill, final: scrFinal
+    bill: scrBill, war: scrWar, final: scrFinal
   })[G.screen](el);
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
@@ -1968,8 +1968,15 @@ function beginGovernment(result) {
     campFunds: 0,
     term: 1,
     situations: [],        // live crises eating this quarter's weeks
-    seenSituations: []
+    seenSituations: [],
+    war: null,             // the theatre, once there is one
+    warAt: null,           // the quarter the cable arrives, decided now and fixed
+    warOver: null
   };
+  /* Rolled once, here, and never again. Most presidencies do not get one; a
+     seed either contains a war or it does not, which is the only way a run
+     with one in it can be replayed and argued about. */
+  if (rnd() < WAR_ODDS) G.gov.warAt = 3 + Math.floor(rnd() * 8);   // Q3 through Q10
   G.gov.capital = quarterlyCapital(G.gov);
   G.gov.history.push({ q: 0, approval: G.gov.approval, econ: G.gov.econ, laws: 0 });
   // Every promise made in a ballroom during the primary is now a phone call
@@ -2055,8 +2062,20 @@ function scrGovern(el) {
       ['Capital', Math.round(g.capital)],
       g.filibusterGone ? ['Senate', 'filibuster abolished', 'r'] : null,
       g.camp ? ['Re-election', `${esc(G.opp2.name)} · ${g.camp.proj ? g.camp.proj.evP + ' EV' : '—'}`,
-        g.camp.proj && g.camp.proj.evP >= 270 ? 'g' : 'r'] : null
+        g.camp.proj && g.camp.proj.evP >= 270 ? 'g' : 'r'] : null,
+      g.war && !g.war.ended ? ['The war', `their will ${Math.round(g.war.enemyWill)} · yours ${Math.round(g.war.homeWill)}`,
+        g.war.enemyWill < g.war.homeWill ? 'g' : 'r'] : null
     ], 'Governing')}
+    ${g.war && !g.war.ended ? `<div class="war-banner">
+      <div style="flex:1">
+        <div class="wb-k">Live theatre · quarter ${g.war.turn + 1}</div>
+        <div class="wb-t">${esc(WAR_THEATRE.foeAdj)} forces are in ${esc(WAR_THEATRE.ally)}. ${esc(warPosture(g.war))}</div>
+        <div class="wb-n">${g.war.casualties.toFixed(1)}k American casualties so far ·
+          ${g.war.weeksThisQuarter} of your weeks committed this quarter ·
+          ${g.war.weeksThisQuarter >= WAR_CMD_ORDER_WEEKS ? 'orders are yours to give' : 'running on last quarter\'s orders'}</div>
+      </div>
+      <button class="btn primary" id="towar">The War Room →</button>
+    </div>` : ''}
     <div class="split">
       <div>
         <div class="panel">
@@ -2110,6 +2129,25 @@ function scrGovern(el) {
     </div></div>`));
 
   const aw = el.querySelector('#actions');
+
+  // The war outranks the desk, which outranks the agenda.
+  if (g.war && !g.war.ended) {
+    const w = g.war;
+    aw.appendChild(h(`<div class="act-group">The Theatre</div>`));
+    const proj = warTurnPreview(w);
+    const row = h(`<div class="prov act">
+      <div><div class="nm">Take the War Room
+          <span class="pill ${w.homeWill < 34 ? 'red' : 'gold'}">${w.homeWill < 34 ? 'the country is running out of patience' : 'quarter ' + (w.turn + 1)}</span></div>
+        <div class="note">Give the theatre its orders for the quarter: where the weight goes, what each
+          front is trying to do, and where the sorties are. Weeks committed here are weeks the agenda
+          does not get, and below ${WAR_CMD_ORDER_WEEKS} of them you do not get to change anything.</div></div>
+      <div class="gain">
+        <span class="eff-tag ${proj.enemyWill < 0 ? 'good' : 'bad'}">Their will <b>${sgn(proj.enemyWill, 1)}</b></span>
+        <span class="eff-tag bad">Casualties <b>${proj.out.casualties.toFixed(1)}k</b></span></div>
+      <div class="fig"><span class="wk">${w.weeksThisQuarter} wk</span><br><span class="muted tiny">committed</span></div></div>`);
+    row.onclick = () => enterWarRoom();
+    aw.appendChild(row);
+  }
 
   // Anything currently on the desk comes first, because it is the thing most
   // likely to cost you the quarter if you keep deciding it can wait.
@@ -2258,6 +2296,8 @@ function scrGovern(el) {
   }
 
   renderLog(el.querySelector('#log'));
+  const tw = el.querySelector('#towar');
+  if (tw) tw.onclick = () => enterWarRoom();
   el.querySelector('#endq').onclick = () => endQuarter();
 }
 
@@ -2437,12 +2477,15 @@ async function endQuarter() {
   g.bipartisan = clamp(g.bipartisan - 0.6, 0, 60);
   g.deficit += Math.max(0, g.deficit * 0.004);
 
+  if (g.war && !g.war.ended) await endWarQuarter();
   if (rnd() < 0.55) await governingEvent();
   await advanceSituations();
-  if (rnd() < 0.42) await raiseSituation();
+  // A country fighting one of these has less appetite for the rest of it.
+  if (rnd() < (g.war && !g.war.ended ? 0.22 : 0.42)) await raiseSituation();
 
   g.history.push({ q: g.quarter, approval: g.approval, econ: g.econ, laws: g.laws.length });
   g.quarter++;
+  if (g.warAt === g.quarter && !g.war) await openWar();
   g.weeks = QUARTER_WEEKS;
   g.done = [];
   g.capital = Math.round(clamp(g.capital * 0.35 + quarterlyCapital(g), 0, 90));
@@ -3062,6 +3105,21 @@ function scrFinal(el) {
           <div class="panel-head"><h2>The Country You Leave</h2><span class="sub">measured against the one you inherited</span></div>
           <div id="finalout"></div>
         </div>` : ''}
+        ${g.war ? `<div class="panel">
+          <div class="panel-head"><h2>The War</h2><span class="sub">${esc(WAR_THEATRE.ally)} · began Q${g.war.startQuarter} · ${g.war.turn} quarters</span></div>
+          <div class="imp-list">
+            <div class="drow"><span class="dk">Outcome</span><span class="mono ${WAR_ENDINGS[(g.war.terms || warTerms(g.war)).id].grade >= 0 ? 'g' : 'r'}">${
+              g.war.terms ? esc(WAR_ENDINGS[g.war.terms.id].title) : 'Still running — ' + esc((warTerms(g.war)).label.toLowerCase())}</span></div>
+            <div class="drow"><span class="dk">American casualties</span><span class="mono">${g.war.casualties.toFixed(1)}k</span></div>
+            <div class="drow"><span class="dk">${esc(WAR_THEATRE.foeAdj)} casualties</span><span class="mono">${g.war.foeCasualties.toFixed(1)}k</span></div>
+            <div class="drow"><span class="dk">Direct cost</span><span class="mono">${bn(g.war.cost)}</span></div>
+            <div class="drow"><span class="dk">Quarters of your time</span><span class="mono">${g.war.turn}</span></div>
+          </div>
+          <div class="tiny muted" style="margin-top:8px">${g.war.terms ? '' :
+            'You left office with it unfinished. It is graded on the line where it stood, because that is what your successor was handed. '}Every one of those quarters was thirteen weeks
+            in which something else was not being done. That is the part the legacy score cannot
+            itemise and the part the histories will spend the most words on.</div>
+        </div>` : ''}
         <div class="panel">
           <div class="panel-head"><h2>Promises</h2></div>
           <table><thead><tr><th>Issue</th><th class="num">Outcome</th></tr></thead><tbody id="prom"></tbody></table>
@@ -3084,7 +3142,8 @@ function scrFinal(el) {
     promises: 'Promises kept and broken', approval: 'Standing with the country',
     economy: 'The economy you leave', legislation: 'Legislative record',
     reelection: 'The voters\' verdict', base: 'Your own coalition',
-    deficit: 'Fiscal position', institutions: 'Damage to the institutions'
+    deficit: 'Fiscal position', institutions: 'Damage to the institutions',
+    war: 'The war'
   };
   for (const k in s.parts) {
     if (failed && ['approval', 'economy', 'legislation', 'reelection', 'deficit', 'institutions'].includes(k)) continue;
@@ -3173,3 +3232,356 @@ function boot() {
    already finished parsing, in which case DOMContentLoaded will never fire. */
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
 else boot();
+
+/* ==========================================================================
+   10. THE WAR
+   A situation is weeks. This is a board, an opponent who moves on it, and two
+   clocks. The presidency does not pause while you play it — the weeks are the
+   same weeks the agenda needs, and the whole design of the thing is that
+   winning it well is expensive enough to cost you the domestic presidency you
+   were elected to have.
+   ========================================================================== */
+
+/* Entering the room commits the minimum two weeks if they are going spare, so
+   that the player arrives somewhere they can act rather than at a screen on
+   which every control is greyed out. Dialling it back to zero is one click and
+   returns the weeks; that is a decision, and it should look like one. */
+function enterWarRoom() {
+  const g = G.gov, w = g.war;
+  if (w && !w.ended && w.weeksThisQuarter === 0 && g.weeks >= WAR_CMD_ORDER_WEEKS) {
+    w.weeksThisQuarter = WAR_CMD_ORDER_WEEKS;
+    g.weeks -= WAR_CMD_ORDER_WEEKS;
+  }
+  G.screen = 'war';
+  render();
+}
+
+async function openWar() {
+  const g = G.gov;
+  g.war = createWar(g.quarter);
+  await showModal({
+    kicker: 'Four in the Morning', title: `${WAR_THEATRE.foeAdj} Forces Cross the Frontier`,
+    text: `${esc(WAR_THEATRE.cable)}<br><br>${esc(WAR_THEATRE.brief)}<br><br>
+      The theatre commander wants orders every quarter. Giving them takes weeks you were going
+      to spend on the agenda — <b>two</b> at minimum to change anything at all, up to
+      <b>${WAR_CMD_MAX_WEEKS}</b> for a war that is actually being run rather than merely
+      reported to you.`,
+    choices: [{ label: 'To the situation room →' }]
+  });
+  logMsg(`${WAR_THEATRE.foeAdj} armour crosses the ${WAR_THEATRE.ally} frontier on three axes.`, 'big', `Q${g.quarter}`);
+  enterWarRoom();
+}
+
+/* Resolve the quarter's orders, apply what it did to the presidency, and show
+   the after-action. Every number in the modal came out of the same call that
+   moved the line. */
+async function endWarQuarter() {
+  const g = G.gov, w = g.war;
+  const out = resolveWarTurn(w, g);
+  applyGovEffect(warPoliticalEffect(w, out));
+  g.outcomes.warDead = w.casualties;
+  g.outcomes.warCost = w.cost;
+  g.outcomes.displaced = w.displaced;
+  w.weeksThisQuarter = 0;
+  w.liftLeft = WAR_LIFT;
+
+  const moved = WAR_FRONTS.filter(F => Math.abs(out.fronts[F.id].delta) > 0.03)
+    .sort((a, b) => Math.abs(out.fronts[b.id].delta) - Math.abs(out.fronts[a.id].delta));
+  const rows = moved.slice(0, 4).map(F => {
+    const r = out.fronts[F.id];
+    return `<div class="drow"><span class="dk">${esc(F.name)}</span>
+      <span class="mono ${r.delta > 0 ? 'g' : 'r'}">${sgn(r.delta * 100, 0)}</span></div>`;
+  }).join('');
+
+  if (!w.ended) {
+    await showModal({
+      kicker: `The Theatre · Quarter ${w.turn}`, title: out.progress > 1.2 ? 'The Line Moves'
+        : out.progress < -1.2 ? 'They Push' : 'A Quarter of Nothing Much',
+      html: `<div class="imp-list">${rows || '<div class="drow"><span class="dk">The line holds everywhere</span></div>'}</div>
+        <div style="margin-top:10px">${willBars(w)}</div>`,
+      text: `<b>${out.casualties.toFixed(1)}k</b> American casualties this quarter,
+        <b>${out.foeCasualties.toFixed(1)}k</b> theirs.
+        ${out.muniFactor < 1 ? `<br><span style="color:var(--amber)">The stockpile did not cover the orders — everything drawn against it ran at ${Math.round(out.muniFactor * 100)}%.</span>` : ''}`,
+      choices: [{ label: 'Back to the desk', tags: effectTags(effectSummary(warPoliticalEffect(w, out), 'gov')) }]
+    });
+    logMsg(`Theatre: ${sgn(out.progress, 1)} on the line, ${out.casualties.toFixed(1)}k casualties.`,
+      out.progress > 1.2 ? 'good' : out.progress < -1.2 ? 'bad' : '', `Q${g.quarter}`);
+    return;
+  }
+  await finishWar(w.ended === 'victory' ? { id: 'victory', label: 'Aravandi capitulation', score: 1 } : warTerms(w));
+}
+
+/* Every ending is the same arithmetic on the same line — what differs is who
+   decided to stop. */
+async function finishWar(terms, how) {
+  const g = G.gov, w = g.war;
+  w.terms = terms;
+  w.ended = w.ended || how || 'armistice';
+  const E = WAR_ENDINGS[terms.id];
+  const cap = w.ended === 'victory';
+
+  const eff = {
+    victory:    { approval: 11, hawks: 9, bipartisan: 8, capital: 10, base: 4 },
+    favourable: { approval: 6, hawks: 5, bipartisan: 4, capital: 4 },
+    status:     { approval: -1, hawks: -1, oppEnergy: 6 },
+    poor:       { approval: -9, hawks: -7, base: -8, oppEnergy: 16 },
+    rout:       { approval: -15, hawks: -11, base: -12, oppEnergy: 24, coherence: -1 }
+  }[terms.id];
+
+  const body = {
+    victory: `The ${WAR_THEATRE.foeAdj} government accepts the terms on a Sunday and announces them on a Monday. The frontier is restored and then some, and the footage of the first units coming home runs for a fortnight.`,
+    favourable: `They sign because the arithmetic stopped working for them before it stopped working for you. The line you are left holding is better than the one you inherited, and everybody involved understands why they signed.`,
+    status: `The frontier ends up more or less where it started. Both governments describe this as a vindication, and the people who fought over the ground in between are not asked.`,
+    poor: `You sign because the alternative is signing later with less. ${WAR_THEATRE.ally} loses territory it will spend a generation talking about, and the word in every headline is "concessions".`,
+    rout: `The appropriation fails on the floor and the withdrawal begins whether or not you have authorised it. The last aircraft out is the photograph that goes in the textbooks, and it is a photograph of your presidency.`
+  }[terms.id];
+
+  await showModal({
+    kicker: cap ? 'They Capitulate' : w.ended === 'collapse' ? 'The Money Runs Out' : 'The War Ends',
+    title: E.title,
+    text: `${esc(body)}<br><br>
+      <b>${w.turn} quarters.</b> <b>${w.casualties.toFixed(1)}k</b> American casualties.
+      <b>${bn(w.cost)}</b> in direct cost, all of it borrowed.`,
+    choices: [{ label: 'It is over', tags: effectTags(effectSummary(eff, 'gov')) }]
+  });
+  applyGovEffect(eff);
+  g.deficit += 0;   // already accrued quarter by quarter
+  g.warOver = terms.id;
+  g.outcomes.warDead = w.casualties;
+  g.outcomes.warCost = w.cost;
+  g.outcomes.displaced = w.displaced;
+  logMsg(`${E.title}. ${w.turn} quarters, ${w.casualties.toFixed(1)}k casualties.`,
+    E.grade > 100 ? 'big' : E.grade < 0 ? 'bad' : '', `Q${g.quarter}`);
+  G.screen = 'govern';
+}
+
+/* ---- the war room -------------------------------------------------------- */
+function scrWar(el) {
+  const g = G.gov, w = g.war;
+  if (w.liftLeft === undefined) w.liftLeft = WAR_LIFT;
+  const cmd = warCommand(w.weeksThisQuarter);
+  const canOrder = w.weeksThisQuarter >= WAR_CMD_ORDER_WEEKS;
+  const airUsed = warFrontsOf(w).reduce((a, f) => a + f.air, 0);
+  const airLeft = WAR_AIR_POOL - airUsed;
+  const proj = warTurnPreview(w);
+
+  el.appendChild(h(`<div class="fade-in">
+    ${tickerBar([
+      ['Quarter', `${w.turn + 1} of the war`],
+      ['Their will', Math.round(w.enemyWill), w.enemyWill < 30 ? 'g' : ''],
+      ['Your patience', Math.round(w.homeWill), w.homeWill < 30 ? 'r' : ''],
+      ['Casualties', `${w.casualties.toFixed(1)}k`],
+      ['In reserve', `${w.reserve.toFixed(1)} div`],
+      ['Munitions', Math.round(w.munitions)],
+      ['Command', `${Math.round(cmd * 100)}%`, canOrder ? '' : 'r']
+    ], 'The Theatre')}
+    <div class="split">
+      <div>
+        <div class="panel">
+          <div class="panel-head"><h2>The Fronts</h2><span class="spacer"></span>
+            <span class="sub" id="liftsub"></span></div>
+          <div class="front-ends" style="margin-bottom:6px">
+            <span>${esc(WAR_THEATRE.foeAdj)} objective</span><span>the frontier</span><span>their ground</span></div>
+          <div id="fronts"></div>
+        </div>
+      </div>
+      <div class="rail">
+        <div class="panel">
+          <div class="panel-head"><h2>The Two Clocks</h2><span class="sub">whichever empties first</span></div>
+          ${willBars(w)}
+          <div class="tiny muted">Their will falls when you take ground they value and when their
+            formations are destroyed. Yours falls on casualties, on time, and fastest of all on a
+            quarter in which nothing happened. Approval and cross-aisle goodwill at home slow it.</div>
+          <div class="kpi" style="margin-top:10px">
+            <div><span class="k">Their will, this quarter</span><span class="v ${proj.enemyWill < 0 ? 'g' : 'r'}">${sgn(proj.enemyWill, 1)}</span></div>
+            <div><span class="k">Your casualties</span><span class="v">${proj.out.casualties.toFixed(1)}k</span></div>
+          </div>
+          <div class="tiny muted" style="margin-top:6px">${proj.enemyWill < -4
+            ? 'These orders break them faster than the country is tiring of it.'
+            : proj.enemyWill < 0 ? 'These orders grind them down, slowly.'
+            : 'These orders do not move them. A quarter like this one is a quarter they win.'}</div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Your Time</h2><span class="sub">${g.weeks} weeks left this quarter</span></div>
+          <div id="weeks"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Sorties</h2><span class="sub">${airLeft} of ${WAR_AIR_POOL} unassigned</span></div>
+          <div class="tiny muted">Sorties do two things: they multiply whatever a front is already
+            doing, and they close the intelligence band on what is in front of it. An envelopment
+            without them is a guess.</div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Not on the Board</h2><span class="sub">what only a president can do</span></div>
+          <div id="escs"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>The Wire</h2></div>
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+    </div>
+    <div class="btn-row" style="margin:16px 0">
+      <button class="btn primary" id="back">← Back to the Desk</button>
+      <span class="muted small" id="ordsub"></span>
+    </div>
+  </div>`));
+
+  el.querySelector('#liftsub').textContent = canOrder
+    ? `${w.liftLeft.toFixed(1)} divisions still movable this quarter`
+    : `Orders need ${WAR_CMD_ORDER_WEEKS} weeks of your time`;
+  el.querySelector('#ordsub').textContent = canOrder
+    ? `Orders stand until you change them. They resolve when the quarter ends.`
+    : `The theatre is running itself on last quarter's orders.`;
+
+  /* ---- weeks ---- */
+  const wk = el.querySelector('#weeks');
+  wk.innerHTML = `<div class="stepper" style="margin-bottom:6px">
+      <button id="wdn">−</button><span class="sv">${w.weeksThisQuarter} wk</span><button id="wup">+</button>
+      <span class="tiny muted" style="margin-left:8px">command ${Math.round(cmd * 100)}%</span></div>
+    <div class="tiny muted">${canOrder
+      ? 'Enough to give orders. Every further week is executed staff work rather than a memo — it raises what every front does, on offence and on defence.'
+      : `Below ${WAR_CMD_ORDER_WEEKS} weeks the theatre runs on the orders it already has and runs them badly.`}</div>`;
+  const wdn = wk.querySelector('#wdn'), wup = wk.querySelector('#wup');
+  wdn.disabled = w.weeksThisQuarter <= 0;
+  wup.disabled = w.weeksThisQuarter >= WAR_CMD_MAX_WEEKS || g.weeks <= 0;
+  wdn.onclick = () => { w.weeksThisQuarter--; g.weeks++; render(); };
+  wup.onclick = () => { w.weeksThisQuarter++; g.weeks--; render(); };
+
+  /* ---- the fronts ---- */
+  const fw = el.querySelector('#fronts');
+  for (const F of WAR_FRONTS) {
+    const f = w.fronts[F.id];
+    const est = warEstimate(f);
+    const yc = f.yours / F.frontage;
+    const row = h(`<div class="front ${f.posture === 'assault' || f.posture === 'envelop' ? 'main' : ''}">
+      <div class="fh"><span class="fn">${esc(F.name)}</span>
+        <span class="ft">${esc(F.terrain)} · ${F.frontage.toFixed(0)} div frontage</span>
+        <span class="spacer"></span>
+        <span class="fv">worth ${F.value}</span></div>
+      <div class="fnote">${esc(F.blurb)}</div>
+      ${frontBar(f, F, { delta: canOrder ? warOrderPreview(w, F.id, f.posture).delta : 0 })}
+      ${f.line <= -0.985 ? `<div class="fnote" style="color:var(--gop-lt)">This front has collapsed onto the
+        ${esc(WAR_THEATRE.foeAdj)} objective line. There is no more ground here to lose, which is why every
+        order below reads as nothing — the only figures that still move are the casualties and what
+        pulling out would free up.</div>`
+        : f.line >= 0.985 ? `<div class="fnote" style="color:var(--green-lt)">You hold everything this front
+        has to give. Weight kept here past this point is buying nothing.</div>` : ''}
+      <div class="fstats">
+        <span>yours <b>${f.yours.toFixed(1)}</b> div ${yc < 0.9 ? '<span class="warn">· line is porous</span>' : ''}</span>
+        <span>theirs <b>${est.lo.toFixed(1)}–${est.hi.toFixed(1)}</b>
+          <span class="intel-band" style="width:${Math.round(6 + est.err * 60)}px"></span></span>
+        <span>supply <b>${Math.round(f.supply * 100)}%</b></span>
+        <span>dug in <b>${Math.round(f.dug * 100)}%</b></span>
+        <span>they are <b>${WAR_POSTURES[f.ePosture].id === 'hold' ? 'holding' : 'pushing'}</b>${f.intel < 0.5 ? ' <span class="warn">(unconfirmed)</span>' : ''}</span>
+      </div>
+      <div class="postures" data-f="${F.id}"></div>
+      <div class="fstats" style="margin-top:8px;align-items:center">
+        <span>divisions <span class="stepper" data-d="${F.id}"></span></span>
+        <span>sorties <span class="stepper" data-a="${F.id}"></span></span>
+      </div>
+    </div>`);
+
+    /* Four postures, each priced by the engine that will resolve them, against
+       the intelligence estimate rather than against the truth. */
+    const pw = row.querySelector('.postures');
+    for (const P of WAR_POSTURE_LIST) {
+      const pv = warOrderPreview(w, F.id, P.id);
+      const need = P.needsAir && f.air <= 0;
+      const b = h(`<button class="pbtn ${f.posture === P.id ? 'on' : ''} ${need ? 'bad' : ''}">
+        <div class="pn">${esc(P.name)}</div>
+        <div class="pv ${pv.delta > 0.005 ? 'g' : pv.delta < -0.005 ? 'r' : ''}">${sgn(pv.delta * 100, 0)}
+          <span class="pb" style="display:inline">±${Math.round(pv.band * 50)}</span></div>
+        <div class="pb">${pv.cas.toFixed(1)}k lost${pv.released ? ` · frees ${pv.released.toFixed(1)}` : ''}</div>
+        ${need ? '<div class="pb" style="color:var(--amber)">no sorties overhead</div>' : ''}
+      </button>`);
+      b.title = P.blurb;
+      if (canOrder) b.onclick = () => { f.posture = P.id; render(); };
+      else b.classList.add('bad');
+      pw.appendChild(b);
+    }
+
+    /* Divisions: moved against the quarter's lift, through the reserve. */
+    const dv = row.querySelector('[data-d]');
+    const step = 0.5;
+    dv.innerHTML = `<button data-x="-1">−</button><span class="sv">${f.yours.toFixed(1)}</span><button data-x="1">+</button>`;
+    const [dm, dp] = dv.querySelectorAll('button');
+    dm.disabled = !canOrder || f.yours < step + 0.25 || w.liftLeft < step;
+    dp.disabled = !canOrder || w.reserve < step || w.liftLeft < step
+      || f.yours >= F.frontage * WAR_DENSITY_CAP;
+    dm.onclick = () => { f.yours -= step; w.reserve += step; w.liftLeft -= step; render(); };
+    dp.onclick = () => { f.yours += step; w.reserve -= step; w.liftLeft -= step; render(); };
+    dp.title = f.yours >= F.frontage * WAR_DENSITY_CAP
+      ? 'This front cannot absorb any more. Anything else sent here is a traffic problem.' : '';
+
+    const av = row.querySelector('[data-a]');
+    av.innerHTML = `<button data-x="-1">−</button><span class="sv">${f.air}</span><button data-x="1">+</button>`;
+    const [am, ap] = av.querySelectorAll('button');
+    am.disabled = !canOrder || f.air <= 0;
+    ap.disabled = !canOrder || airLeft <= 0;
+    am.onclick = () => { f.air--; render(); };
+    ap.onclick = () => { f.air++; render(); };
+
+    fw.appendChild(row);
+  }
+
+  /* ---- escalations ---- */
+  const ew = el.querySelector('#escs');
+  for (const E of WAR_ESCALATIONS) {
+    const avail = warEscalationAvailable(w, E, g);
+    const ok = avail && g.capital >= E.capital && g.weeks >= E.weeks;
+    const why = !avail
+      ? (E.needs ? `Needs ${Object.entries(E.needs).map(([k, v]) => `${v} ${k === 'bipartisan' ? 'cross-aisle goodwill' : k}`).join(', ')}.` : 'Already done.')
+      : g.weeks < E.weeks ? `Needs ${E.weeks} week${E.weeks === 1 ? '' : 's'}; ${g.weeks} left.`
+      : g.capital < E.capital ? `Needs ${E.capital} capital.` : null;
+    const extra = E.id === 'strike' && w.strikes
+      ? `<div class="tiny" style="color:var(--amber);margin-top:3px">Campaign ${w.strikes + 1}. Each one buys less than the last and hands back more.</div>` : '';
+    // Opening a channel has no effects object because what it does is end the
+    // war on whatever the map says this morning. Say that instead of the
+    // "no measurable effect" the generic summariser produces for an empty one.
+    const t = E.id === 'talks' ? warTerms(w) : null;
+    const tags = t
+      ? `<span class="eff-tags"><span class="eff-tag ${WAR_ENDINGS[t.id].grade >= 0 ? 'good' : 'bad'}">Terms today <b>${esc(t.label)}</b></span></span>`
+      : effectTags(effectSummary(E.eff, 'gov'));
+    const row = h(`<div class="esc ${ok ? '' : 'stripped'}">
+      <div class="top"><div class="nm">${esc(E.name)}</div>
+        <div class="cost">${E.weeks} wk · ${E.capital} cap</div></div>
+      <div class="note">${esc(E.desc)}</div>
+      ${why ? `<div class="blocked">${esc(why)}</div>` : ''}${extra}
+      ${tags}</div>`);
+    if (ok) row.onclick = () => doWarEscalation(E);
+    ew.appendChild(row);
+  }
+
+  renderLog(el.querySelector('#log'));
+  el.querySelector('#back').onclick = () => { G.screen = 'govern'; render(); };
+}
+
+async function doWarEscalation(E) {
+  const g = G.gov, w = g.war;
+  if (E.id === 'talks') {
+    const t = warTerms(w);
+    const idx = await showModal({
+      kicker: 'A Third Country, A Hotel', title: 'Open a Channel',
+      text: `Terms are exactly as good as the line on the map this morning, and the line this morning
+        is <b>${esc(t.label.toLowerCase())}</b>.<br><br>
+        Their will to keep fighting stands at <b>${Math.round(w.enemyWill)}</b>; your own country's
+        patience stands at <b>${Math.round(w.homeWill)}</b>. Whichever of those two numbers is lower
+        is the one the other side is reading.`,
+      choices: [
+        { label: `Sign — ${t.label}`, tags: `<span class="eff-tags"><span class="eff-tag ${WAR_ENDINGS[t.id].grade >= 0 ? 'good' : 'bad'}">Legacy <b>${sgn(WAR_ENDINGS[t.id].grade, 0)}</b></span></span>` },
+        { label: 'Keep fighting for a better line' }
+      ]
+    });
+    if (idx === 1) return;
+    g.capital -= E.capital; g.weeks -= E.weeks;
+    await finishWar(t, 'armistice');
+    return render();
+  }
+  g.capital -= E.capital;
+  g.weeks -= E.weeks;
+  warEscalate(w, E.id);
+  applyGovEffect(E.eff);
+  logMsg(`${E.name}.`, E.id === 'strike' ? 'bad' : '', `Q${g.quarter}`);
+  render();
+}

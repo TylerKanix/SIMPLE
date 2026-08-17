@@ -60,6 +60,10 @@ Americans taken abroad. They do not resolve themselves, they take weeks you were
 going to spend on the agenda, and letting one run out the clock costs more than
 handling it would have.
 
+And one presidency in ten is handed a war, which is not a situation with more
+text on it. It has a board, an opponent who moves on it, and a war room you have
+to keep going back to.
+
 ---
 
 ## What the model actually does
@@ -168,6 +172,78 @@ sixty votes still counts as a bill passed; the ledger is where the difference
 shows up. Outcomes are reported without a verdict — whether fewer people in
 federal prison is an improvement is the argument the game is about.
 
+### One presidency in ten gets a war
+
+The roll happens once, at the inauguration, and is then fixed, so a seed either
+contains a war or it does not and a run with one in it can be replayed and
+argued about. Over six hundred simulated presidencies the rate comes out at
+9.3%, and the cable arrives somewhere between the third quarter and the tenth.
+
+The theatre and both belligerents are invented. What is on the screen is five
+fronts, an adversary who writes its orders for the quarter before it sees
+yours, and two clocks: how much longer they will keep fighting, and how much
+longer your own country will let you. You do not win by spending enough weeks.
+You win by emptying the first clock before the second one empties.
+
+**Frontage is the whole strategic argument.** Every front caps what it can
+absorb — about twice the force needed to hold a continuous line there — and
+past that cap the extra divisions are fed, counted, and contribute nothing.
+Two divisions are a wall in the Kesar passes and twenty are a queue. The
+southern steppe needs nine to be a line rather than a series of opinions, which
+is why it is the front both sides leave thin and the front that gets turned.
+The cap is what stops mass being a strategy on its own: a numerical advantage
+has to be spent somewhere it fits, and the only fronts with room are the ones
+nobody wants.
+
+**Four postures, and none of them sits between any of the others.** Assault is
+the only one that takes ground quickly. Hold is the only one that makes their
+offensive cost them more than it costs you. Envelop is the only one whose
+payoff is a function of their weakness rather than your strength — enormous
+against a front they have thinned, actively bad against one they have not, and
+unrunnable without sorties overhead. Withdraw is the only one that gives you
+divisions back, and it breaks contact, so most of what they spend attacking a
+front you are leaving lands on ground you have already left.
+
+Sampling three hundred and fifty real board states and rolling each one forward
+three quarters under every posture, the best answer was assault 25% of the
+time, hold 60%, envelop 10% and withdraw 5% — and the split by front is the
+strategy in miniature: the coastal shelf is assault country, the steppe is
+where envelopment lives, and the fronts that show withdrawals are the highlands
+and the river line, which are the two you most often cannot afford. Hold is the
+plurality answer because you can only be offensive in one or two places, which
+is the same reason they can.
+
+**They have a main effort.** No more than two fronts are offensive in any
+quarter on their side either. Screening a front they are not pushing costs you
+almost nothing; screening one they are costs you the front. Which two they have
+chosen is the single most valuable thing reconnaissance buys.
+
+**The preview is exact and your information is not.** Every figure on a posture
+button is the resolving engine run against a copy of the board — but it is run
+against your intelligence estimate rather than against the truth, and what is
+shown is the band between the top and the bottom of that estimate. Sorties
+narrow it. A front nobody has looked at in three quarters produces an honest
+and useless answer.
+
+**It eats the presidency, which is the point.** Weeks in the war room are weeks
+the agenda does not get, and the gradient is steep: playing the same strategy at
+five weeks a quarter wins outright or settles well in 8 runs out of 10, at three
+weeks it wins about a quarter of the time, and at zero — the theatre running
+itself on last quarter's orders — it never wins at all. Concentrating the six
+sorties on the main effort rather than spreading them one per front is worth
+about the same again. Refusing to mobilize loses every time; the standing force
+is deliberately not enough. Deep strikes are the exception that had to be
+designed against: uncapped, twelve consecutive campaigns won every war in the
+harness at two-thirds of the casualties, so each one now buys less than the last
+and hands back more will every quarter after it, and spamming them loses.
+
+A well-run war runs nine to twelve quarters, kills fourteen to nineteen thousand
+Americans, and costs somewhere over two trillion dollars, all of it borrowed and
+all of it on the deficit line the fiscal hawks are reading. Winning it is the
+largest single thing available to a presidency. It is also three years in which
+you were doing that instead of the thing you were elected to do, and the final
+accounting reports both.
+
 ### Everything else
 
 Deficits accumulate and fiscal hawks price them in. Executive orders give you
@@ -188,7 +264,9 @@ so a run can be reproduced and argued about. The seed is shown on the results
 screen.
 
 Blocs overlap in reality and are treated as disjoint slices here. Caucuses stand
-in for 535 individuals. Bloc ideal points, stance costs, and caucus positions are
+in for 535 individuals. The war's theatre, its geography and both belligerents
+are invented, drawn for the strategic problem they pose rather than after
+anywhere in particular, and nothing in it is a claim about any real conflict. Bloc ideal points, stance costs, and caucus positions are
 a playable caricature calibrated for tension, not a forecast, and nothing in the
 data files is a claim about how any real group votes.
 
@@ -197,7 +275,7 @@ data files is a claim about how any real group votes.
 ```
 index.html      shell
 styles.css      stylesheet
-js/data.js      issues, stances, blocs, states, caucuses, groups, bills, events
+js/data.js      issues, stances, blocs, states, caucuses, groups, bills, events, fronts
 js/sim.js       simulation engine — no DOM
 js/analysis.js  decision pricing, dossiers, state files — no DOM
 js/ui.js        rendering helpers — map, bars, charts, meters, modals
