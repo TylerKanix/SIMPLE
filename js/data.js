@@ -1143,8 +1143,13 @@ const SITUATIONS = [
    THE WAR
 
    Most presidencies do not have one. This one has a one-in-ten chance of it,
-   rolled once at the inauguration and then fixed, so that a seed either
-   contains a war or does not and a run can be argued about either way.
+   rolled once at the inauguration and then fixed for the rest of the run.
+
+   Note what that does and does not promise. The roll draws from the same
+   seeded stream every other decision draws from, and how many draws happen
+   before it depends on how the primary and the general were played — so a seed
+   and the same choices reproduce a run exactly, war included, but the same
+   seed played differently can land on the other side of the roll.
 
    A situation is a thing you spend weeks on until it goes away. A war is not
    that. It has a board, an opponent who moves on it, and two clocks: how much

@@ -174,10 +174,15 @@ federal prison is an improvement is the argument the game is about.
 
 ### One presidency in ten gets a war
 
-The roll happens once, at the inauguration, and is then fixed, so a seed either
-contains a war or it does not and a run with one in it can be replayed and
-argued about. Over six hundred simulated presidencies the rate comes out at
-9.3%, and the cable arrives somewhere between the third quarter and the tenth.
+The roll happens once, at the inauguration, and is then fixed for the rest of
+the run. Over six hundred simulated presidencies the rate comes out at 9.3%,
+and the cable arrives somewhere between the third quarter and the tenth.
+
+It draws from the same seeded stream every other decision draws from, and how
+many draws land before it depends on how the primary and the general were
+played. So a seed and the same choices reproduce a run exactly, war and all —
+but replaying a seed and making different choices can put you on the other side
+of the roll. There is no seed that guarantees a war on its own.
 
 The theatre and both belligerents are invented. What is on the screen is five
 fronts, an adversary who writes its orders for the quarter before it sees
