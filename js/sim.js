@@ -542,6 +542,20 @@ function applyCycleDrift() {
 }
 let CYCLE_BIAS = 0;
 
+/* Put the map back to the state it was in at boot.
+
+   `applyCycleDrift` moves every state's pvi by addition, and `calibrateStates`
+   re-derives pvi from the stored prior result — but only once, because it is
+   guarded by CALIBRATED. Starting a second run in the same page without this
+   would drift an already-drifted map and compound the college bias on every
+   replay. Reloading the page used to hide that; a game served as a single
+   embedded file cannot count on being able to reload itself. */
+function resetWorld() {
+  CALIBRATED = false;
+  calibrateStates();
+  CYCLE_BIAS = 0;
+}
+
 /* Re-center the map on a 50-50 nation and re-solve every residual. */
 function recenter(D, R, env) {
   let mean = 0, wsum = 0;

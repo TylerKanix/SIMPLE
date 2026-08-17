@@ -21,6 +21,26 @@ function logMsg(text, cls, when) {
   if (G.log.length > 220) G.log.pop();
 }
 
+/* Start over without reloading the page.
+
+   `location.reload()` is not available everywhere this file gets opened — a
+   sandboxed frame will refuse it silently, which leaves the button dead on the
+   one screen that most needs it. Resetting in place works everywhere, and it
+   has to put the world back as well as the run: see resetWorld. */
+function restartGame() {
+  resetWorld();
+  _setup = { party: 'D', bg: 'gov', name: '', age: 54, home: 'PA', bio: ['smalltown'] };
+  _usedNames.first.clear();
+  _usedNames.last.clear();
+  for (const k of Object.keys(G)) delete G[k];
+  Object.assign(G, {
+    screen: 'title', seed: 0, player: null, opp: null, opp2: null, env: null,
+    primary: null, general: null, gov: null, bill: null, field: null,
+    results: null, veepOptions: null, log: []
+  });
+  render();
+}
+
 function render() {
   renderTopbar();
   const el = $app();
@@ -3204,7 +3224,7 @@ function scrFinal(el) {
       }).join('')
     : '<span class="muted">Nothing was signed.</span>';
 
-  el.querySelector('#again').onclick = () => location.reload();
+  el.querySelector('#again').onclick = () => restartGame();
   el.querySelector('#seedbtn').onclick = () => {
     navigator.clipboard && navigator.clipboard.writeText(String(G.seed));
     el.querySelector('#seedbtn').textContent = 'Seed copied: ' + G.seed;
