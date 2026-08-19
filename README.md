@@ -9,6 +9,14 @@ act one is an asset or a liability in act four.
 **To play:** open `index.html` in a browser. No build step, no dependencies, no
 server. Double-clicking the file works.
 
+**The published build:** https://claude.ai/code/artifact/55a9dc71-7138-436f-acbd-c8eec04f4a9d
+
+That address is permanent and is the one to hand to anyone. To ship an update,
+run `node publish.js` and republish `mandate.artifact.html` **to that same
+url** — passing it explicitly if you are not in the conversation that first
+published it. Publishing without the url mints a second artifact at a new
+address and strands everyone holding the old link.
+
 ---
 
 ## The acts
@@ -262,6 +270,16 @@ the institutions, and the voters' verdict.
 
 ---
 
+## Versions
+
+`js/data.js` holds `PATCH_NOTES`, newest first, and the title screen renders it.
+`GAME_VERSION` is derived from the top entry rather than written down a second
+time. Numbering starts at 1.07 — the release that added the war; everything
+before it shipped unnumbered and there is nothing honest to backfill.
+
+Adding a release means adding one entry to that array. Nothing else needs
+touching, and the version on the title screen follows.
+
 ## Notes
 
 Runs are seeded — enter a seed on the setup screen and the same world regenerates,
@@ -286,4 +304,5 @@ js/analysis.js  decision pricing, dossiers, state files — no DOM
 js/ui.js        rendering helpers — map, bars, charts, meters, modals
 js/main.js      game flow and screens
 build.js        bundles all of the above into one standalone mandate.html
+publish.js      the same bundle, titled for publishing as an Artifact
 ```

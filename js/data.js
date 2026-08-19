@@ -1243,3 +1243,40 @@ const WAR_OUTCOMES = [
    pick them up without knowing the war exists. Every ledger line renders only
    once it is non-zero, so a presidency without a war never shows them. */
 for (const o of WAR_OUTCOMES) { OUTCOMES.push(o); OUTCOME_BY_ID[o.id] = o; }
+
+/* ==========================================================================
+   PATCH NOTES
+
+   Versioning starts at 1.07 — the release that added the war. Everything
+   before it shipped unnumbered, so there is nothing honest to backfill and
+   nothing here pretends otherwise.
+
+   Newest first. `GAME_VERSION` is derived from the top entry rather than
+   written down twice, because two copies of a version number are one copy too
+   many and they always drift.
+   ========================================================================== */
+const PATCH_NOTES = [
+  { v: '1.08', date: '2026-08-19', title: 'Patch notes, and a link that keeps its address',
+    notes: [
+      'Added this panel. It lists every release from 1.07 on.',
+      'The published build now updates in place, so the link you have is the link — a new version arrives at the same address instead of a new one.'
+    ] },
+
+  { v: '1.07.1', date: '2026-08-17', title: 'Replay fixes',
+    notes: [
+      '"Run Again" works again. It used to reload the page, which a sandboxed frame refuses without saying so — the button was dead exactly where the game is most often opened.',
+      'Fixed a bug that reload had been hiding: restarting in place drifted an already-drifted map, so the same seed quietly produced a different country on every replay. The map is now rebuilt from its baseline each run.',
+      'Corrected the documentation on what a seed promises. The war roll draws from the same stream as every other decision, so a seed plus the same choices reproduces a run exactly — but no seed guarantees a war on its own.'
+    ] },
+
+  { v: '1.07', date: '2026-08-17', title: 'The war',
+    notes: [
+      'One presidency in ten is handed a war. The roll happens once, at the inauguration, and the cable arrives somewhere between the third quarter and the tenth.',
+      'Five fronts across an invented theatre, each a different strategic problem. Frontage caps what a front can absorb, so twenty divisions in a mountain pass are a queue and mass on its own is not a strategy.',
+      'Four postures per front — assault, hold, envelop, withdraw — none of them a blend of the others. Every one is priced by the engine that resolves the turn, against your intelligence estimate rather than the truth.',
+      'Two clocks: how much longer they will keep fighting, and how much longer your own country will let you. You win by emptying the first before the second.',
+      'Weeks in the war room are weeks the agenda does not get, and the war is scored in the final accounting alongside what it cost to fight.'
+    ] }
+];
+
+const GAME_VERSION = PATCH_NOTES[0].v;

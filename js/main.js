@@ -133,6 +133,13 @@ function scrTitle(el) {
         <div class="btn-row" style="justify-content:center;margin-top:30px">
           <button class="btn primary" id="start">Announce Your Candidacy</button>
         </div>
+        <div class="patch" id="patch">
+          <div class="patch-head">
+            <span class="pk">Patch notes</span>
+            <span class="pv">v${esc(GAME_VERSION)}</span>
+          </div>
+          <div class="patch-body" id="patchbody"></div>
+        </div>
         <div class="muted tiny" style="margin-top:26px;max-width:600px;margin-left:auto;margin-right:auto;line-height:1.75">
           Four acts: the platform, the primary, the general election, and the presidency.
           Everything you choose in act one is a liability or an asset in act four.
@@ -142,6 +149,29 @@ function scrTitle(el) {
       </div>
     </div>`));
   el.querySelector('#start').onclick = () => { G.screen = 'setup'; render(); };
+
+  /* The newest release is open, everything before it is a row you can push.
+     Kept small on purpose: it is a footnote on the title screen, not a
+     changelog page, so it scrolls inside its own box rather than pushing the
+     button that starts the game off the bottom of the screen. */
+  const pb = el.querySelector('#patchbody');
+  for (const [i, n] of PATCH_NOTES.entries()) {
+    const row = h(`<div class="patch-rel${i === 0 ? ' open' : ''}">
+      <button class="patch-t" aria-expanded="${i === 0}">
+        <span class="pn">${esc(n.v)}</span>
+        <span class="pt">${esc(n.title)}</span>
+        <span class="pd">${esc(n.date)}</span>
+        <span class="px" aria-hidden="true"></span>
+      </button>
+      <ul class="patch-l">${n.notes.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+    </div>`);
+    const btn = row.querySelector('.patch-t');
+    btn.onclick = () => {
+      const open = row.classList.toggle('open');
+      btn.setAttribute('aria-expanded', String(open));
+    };
+    pb.appendChild(row);
+  }
 }
 
 /* ==========================================================================
