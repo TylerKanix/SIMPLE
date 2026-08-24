@@ -1071,6 +1071,9 @@ function createWar(startQuarter) {
     };
   }
   w.reserve = WAR_START_DIVS - warCommitted(w);
+  /* Set here rather than by the war room, so the quarter's redeployment
+     allowance exists whether or not anyone has looked at the board. */
+  w.liftLeft = WAR_LIFT;
   warPlanEnemy(w);
   return w;
 }

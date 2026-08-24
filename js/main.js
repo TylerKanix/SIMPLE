@@ -41,7 +41,330 @@ function restartGame() {
   render();
 }
 
+/* ==========================================================================
+   THE DECISION LOG
+   A run is a seed and the ordered list of decisions taken since. The world is
+   whatever replaying those from that seed produces — the game already promised
+   that about seeds, and this is the machinery that cashes the promise in.
+
+   Two kinds of entry go into the log:
+
+     screen actions   {t:'pm', ...}   a click that starts a flow
+     modal answers    {t:'?', k, v}   a choice made inside a flow
+
+   Both the player and the replayer reach the simulation through the same two
+   doors: `record` for the first kind, `choose` for the second. Nothing else
+   may mutate run state, because anything that does is invisible to the log and
+   will not survive a reload.
+
+   While replaying, rendering is suppressed and the modals answer themselves
+   from the log, so a whole presidency reconstructs in a few milliseconds with
+   no DOM involved.
+   ========================================================================== */
+
+/* The wall clock, read only for stamping saves and history. Nothing the
+   simulation reads may depend on it — see test/discipline.js. */
+function nowMs() { return Date.now(); }
+
+const RUN = {
+  log: [],
+  replay: null,        // { log, i } while reconstructing
+  mode: 'full',
+  difficulty: 'standard',
+  daily: null,
+  startedAt: 0,
+  suspended: false,    // set when a replay fails, to stop autosave clobbering
+  /* Driving the game with nobody watching. Set while reconstructing a save,
+     and by the scenario starts, which play a whole campaign from the seed to
+     produce the record the presidency is then handed. Rendering is the
+     slowest thing the game does by an order of magnitude and none of it is
+     wanted here. */
+  headless: false
+};
+
+function replaying() { return RUN.replay !== null; }
+
+/* True whenever the game is being driven with nobody watching — a save being
+   reconstructed, or a scenario playing a campaign out for its result. Screens
+   are skipped and anything built out of timers resolves at once. */
+function quiet() { return RUN.replay !== null || RUN.headless; }
+
+/* Screen actions. The click handler builds the entry, this stores it and the
+   dispatcher applies it — so the live path and the replay path run identical
+   code with identical arguments. */
+function record(entry) {
+  if (replaying()) throw new Error('record() during replay: a handler mutated state out of band');
+  RUN.log.push(entry);
+  const done = applyDecision(entry);
+  // Flows are async; save once the decision has actually landed.
+  if (done && typeof done.then === 'function') return done.then(autosave, e => { autosave(); throw e; });
+  autosave();
+  return done;
+}
+
+/* Modal answers. Replaces `await choose('record:1', ...)` at every site whose outcome
+   the simulation reads. Informational modals — the ones with a single
+   acknowledging button — are not decisions and are not logged; they simply do
+   not appear while replaying. */
+async function choose(kind, opts) {
+  /* A modal with one button is an acknowledgement, not a decision: it carries
+     no information the simulation reads, so it is neither logged nor shown
+     while replaying. The count comes from deterministic state, so it is the
+     same on both paths — which is what lets every call site convert to this
+     one function without classifying them by hand. */
+  const decides = !!(opts.choices && opts.choices.length > 1);
+  if (replaying()) {
+    if (!decides) return 0;
+    const r = RUN.replay;
+    const e = r.log[r.i];
+    if (!e || e.t !== '?' || e.k !== kind) {
+      throw new ReplayError(`expected a "${kind}" answer at entry ${r.i}, found ` +
+        (e ? `"${e.t === '?' ? e.k : e.t}"` : 'the end of the log'));
+    }
+    r.i++;
+    return e.v;
+  }
+  const v = await showModal(opts);
+  if (decides) { RUN.log.push({ t: '?', k: kind, v }); autosave(); }
+  return v;
+}
+
+function ReplayError(msg) { this.message = msg; this.name = 'ReplayError'; }
+ReplayError.prototype = Object.create(Error.prototype);
+
+/* ---- the dispatcher ------------------------------------------------------
+   One entry per kind of decision. Handlers do the state change and the
+   redraw; the redraw is a no-op while replaying. */
+const DECISIONS = {
+
+  /* --- act 0 ------------------------------------------------------------ */
+  setup: e => {
+    _setup = Object.assign({}, e.s, { bio: (e.s.bio || []).slice() });
+    applyCycleDrift();
+    startCampaign();
+  },
+
+  /* --- act I: the platform ---------------------------------------------- */
+  st: e => {
+    const p = G.player;
+    p.platform.positions[e.i] = e.p;
+    refreshCandidate(p);
+    render();
+  },
+  sig: e => {
+    const p = G.player, sig = p.platform.signature, at = sig.indexOf(e.i);
+    if (at >= 0) { sig.splice(at, 1); p.platform.salience[e.i] = 0; }
+    else if (sig.length < 3) { sig.push(e.i); p.platform.salience[e.i] = 1; }
+    refreshCandidate(p);
+    render();
+  },
+  lock: () => beginPrimary(),
+
+  /* --- act II: the primary ---------------------------------------------- */
+  pm: e => doPrimaryMove(PRIMARY_MOVES.find(m => m.id === e.i)),
+  hold: () => holdContest(),
+
+  /* --- act III: the general --------------------------------------------- */
+  gpost: e => {
+    G.general.efforts[e.a].posture = e.v;
+    updateProjection();
+    render();
+  },
+  camp: e => {
+    // The targeted state travels with the action rather than being read off
+    // the screen, so choosing where to look is not a logged decision.
+    G.general.target = e.a;
+    return doCampaignAction(CAMPAIGN_ACTIONS.find(a => a.id === e.i));
+  },
+  endweek: () => endCampaignWeek(),
+  go: () => advanceFromResults(),
+
+  /* --- act IV: governing ------------------------------------------------ */
+  sitwk: e => {
+    const g = G.gov;
+    const live = g.situations.find(x => x.id === e.i);
+    const S = SITUATIONS.find(x => x.id === e.i);
+    if (!live || !S) return;
+    const put = Math.min(S.weeks - live.put, g.weeks);
+    if (put <= 0) return;
+    live.put += put;
+    g.weeks -= put;
+    g.done.push(S.working);
+    logMsg(`${put} week${put === 1 ? '' : 's'} on ${S.name.toLowerCase()}.`, '', `Q${g.quarter}`);
+    render();
+  },
+  gov: e => doGovAction(GOV_ACTIONS.find(a => a.id === e.i)),
+  endq: () => endQuarter(),
+
+  /* --- the bill --------------------------------------------------------- */
+  prov: e => {
+    const B = G.bill, i = B.selected.indexOf(e.i);
+    if (i >= 0) B.selected.splice(i, 1); else B.selected.push(e.i);
+    render();
+  },
+  deal: e => makeDeal(e.i),
+  tool: e => useTool(e.i),
+  floor: () => bringToFloor(),
+  shelve: async () => {
+    const i = await choose('shelve', {
+      title: 'Shelve It',
+      text: 'The bill goes back to committee. You keep your capital and lose the quarter.',
+      choices: [{ label: 'Shelve it' }, { label: 'Keep working' }]
+    });
+    if (i !== 0) return;
+    spendBillWeeks();
+    logMsg(`${G.bill.bill.name} is pulled from the floor.`, 'bad', `Q${G.gov.quarter}`);
+    G.screen = 'govern';
+    render();
+  },
+
+  /* --- the war ---------------------------------------------------------- */
+  warroom: () => enterWarRoom(),
+  warwk: e => {
+    const g = G.gov, w = g.war;
+    if (e.d < 0) {
+      if (w.weeksThisQuarter <= 0) return;
+      w.weeksThisQuarter--; g.weeks++;
+    } else {
+      if (w.weeksThisQuarter >= WAR_CMD_MAX_WEEKS || g.weeks <= 0) return;
+      w.weeksThisQuarter++; g.weeks--;
+    }
+    render();
+  },
+  wpost: e => {
+    const w = G.gov.war;
+    if (w.weeksThisQuarter < WAR_CMD_ORDER_WEEKS) return;
+    w.fronts[e.f].posture = e.v;
+    render();
+  },
+  wdiv: e => {
+    const w = G.gov.war, F = WAR_FRONT_BY_ID[e.f], f = w.fronts[e.f], step = WAR_DIV_STEP;
+    if (w.weeksThisQuarter < WAR_CMD_ORDER_WEEKS) return;
+    if (e.d < 0) {
+      if (f.yours < step + 0.25 || w.liftLeft < step) return;
+      f.yours -= step; w.reserve += step; w.liftLeft -= step;
+    } else {
+      if (w.reserve < step || w.liftLeft < step || f.yours >= F.frontage * WAR_DENSITY_CAP) return;
+      f.yours += step; w.reserve -= step; w.liftLeft -= step;
+    }
+    render();
+  },
+  wair: e => {
+    const w = G.gov.war, f = w.fronts[e.f];
+    if (w.weeksThisQuarter < WAR_CMD_ORDER_WEEKS) return;
+    const used = warFrontsOf(w).reduce((a, x) => a + x.air, 0);
+    if (e.d < 0) { if (f.air <= 0) return; f.air--; }
+    else { if (WAR_AIR_POOL - used <= 0) return; f.air++; }
+    render();
+  },
+  wesc: e => doWarEscalation(WAR_ESCALATIONS.find(E => E.id === e.i))
+};
+
+function applyDecision(e) {
+  const h = DECISIONS[e.t];
+  if (!h) throw new ReplayError(`unknown decision "${e.t}"`);
+  return h(e);
+}
+
+/* ---- saving -------------------------------------------------------------- */
+function currentSave() {
+  return makeSave({
+    version: GAME_VERSION,
+    seed: G.seed,
+    mode: RUN.mode,
+    difficulty: RUN.difficulty,
+    daily: RUN.daily,
+    log: RUN.log,
+    at: RUN.startedAt,
+    label: runLabel()
+  });
+}
+
+/* What the Continue button says. Read from live state rather than stored, so
+   it cannot go stale against the log. */
+function runLabel() {
+  const p = G.player;
+  if (!p) return 'A new candidacy';
+  const who = `${p.party ? p.party.name : ''} · ${p.name || 'unnamed'}`;
+  if (G.gov) {
+    if (G.gov.failedAt) return `${who} — defeated`;
+    const yr = 2029 + Math.floor((G.gov.quarter - 1) / 4);
+    return `${who} — in office, Q${((G.gov.quarter - 1) % 4) + 1} ${yr}`;
+  }
+  if (G.screen === 'night' || G.screen === 'results') return `${who} — election night`;
+  if (G.general) return `${who} — the general, week ${G.general.week}`;
+  if (G.primary) return `${who} — the primary`;
+  return `${who} — writing a platform`;
+}
+
+let _saveTimer = null;
+function autosave() {
+  if (replaying() || RUN.suspended || !storageOK()) return;
+  if (!RUN.log.length) return;
+  // Coalesce bursts: several entries can land in one flow, and writing the
+  // whole log four times in a row for one click is wasted work.
+  if (_saveTimer) return;
+  _saveTimer = setTimeout(() => { _saveTimer = null; saveRun(currentSave()); }, 0);
+}
+function saveNow() {
+  if (replaying() || RUN.suspended || !storageOK()) return;
+  if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
+  saveRun(currentSave());
+}
+
+/* ---- starting and reconstructing ----------------------------------------- */
+
+/* Put the world and the run back to nothing, then seed it. Both a fresh run
+   and a replay come through here, so they cannot diverge on setup. */
+function primeRun(o) {
+  resetWorld();
+  _usedNames.first.clear();
+  _usedNames.last.clear();
+  for (const k of Object.keys(G)) delete G[k];
+  Object.assign(G, {
+    screen: 'setup', seed: o.seed, player: null, opp: null, opp2: null, env: null,
+    primary: null, general: null, gov: null, bill: null, field: null,
+    results: null, veepOptions: null, log: []
+  });
+  RUN.log = [];
+  RUN.replay = null;
+  RUN.mode = o.mode || 'full';
+  RUN.difficulty = o.difficulty || 'standard';
+  RUN.daily = o.daily || null;
+  RUN.startedAt = o.at || nowMs();
+  RUN.suspended = false;
+  RUN.headless = !!o.headless;
+  setSeed(o.seed);
+}
+
+/* Replay a save. Rendering is off throughout, so this reconstructs an entire
+   presidency without touching the DOM, then draws once at the end. */
+async function replaySave(save) {
+  primeRun({ seed: save.seed, mode: save.mode, difficulty: save.difficulty,
+    daily: save.daily, at: save.at });
+  RUN.replay = { log: save.log, i: 0 };
+  try {
+    while (RUN.replay.i < RUN.replay.log.length) {
+      const e = RUN.replay.log[RUN.replay.i];
+      if (e.t === '?') {
+        throw new ReplayError(`a modal answer at entry ${RUN.replay.i} was never asked for`);
+      }
+      RUN.replay.i++;
+      await applyDecision(e);
+    }
+  } finally {
+    // The log we just consumed is the log this run now owns.
+    RUN.log = save.log.slice(0, RUN.replay ? RUN.replay.i : save.log.length);
+    RUN.replay = null;
+  }
+  RUN.log = save.log.slice();
+  return true;
+}
+
 function render() {
+  // Nobody to draw for while a save is being reconstructed, or while a
+  // scenario plays a campaign out to get at its result.
+  if (quiet()) return;
   renderTopbar();
   const el = $app();
   el.innerHTML = '';
@@ -288,10 +611,11 @@ function scrSetup(el) {
   el.querySelector('#back').onclick = () => { G.screen = 'title'; render(); };
   el.querySelector('#next').onclick = () => {
     const seedIn = el.querySelector('#seed').value.trim();
-    G.seed = seedIn ? hashSeed(seedIn) : freshSeed();
-    setSeed(G.seed);
-    applyCycleDrift();
-    startCampaign();
+    // The candidate's choices are one entry rather than six, because nothing
+    // reads them until the run starts and the log is easier to read this way.
+    primeRun({ seed: seedIn ? hashSeed(seedIn) : freshSeed() });
+    record({ t: 'setup', s: { party: _setup.party, bg: _setup.bg, name: _setup.name,
+      age: _setup.age, home: _setup.home, bio: _setup.bio.slice() } });
   };
 }
 
@@ -488,23 +812,12 @@ function scrPlatform(el) {
   iw.querySelectorAll('.stance').forEach(s => {
     s.onmouseenter = () => showImpact(s.dataset.i, +s.dataset.k);
     s.onfocus = () => showImpact(s.dataset.i, +s.dataset.k);
-    s.onclick = () => {
-      p.platform.positions[s.dataset.i] = parseInt(s.dataset.p, 10);
-      refreshCandidate(p);
-      render();
-    };
+    s.onclick = () => record({ t: 'st', i: s.dataset.i, p: parseInt(s.dataset.p, 10) });
   });
   iw.onmouseleave = idleImpact;
 
   iw.querySelectorAll('.sig-btn').forEach(b => {
-    b.onclick = () => {
-      const id = b.dataset.sig, sig = p.platform.signature;
-      const at = sig.indexOf(id);
-      if (at >= 0) { sig.splice(at, 1); p.platform.salience[id] = 0; }
-      else if (sig.length < 3) { sig.push(id); p.platform.salience[id] = 1; }
-      refreshCandidate(p);
-      render();
-    };
+    b.onclick = () => record({ t: 'sig', i: b.dataset.sig });
   });
 
   // --- readouts ---
@@ -577,7 +890,7 @@ function scrPlatform(el) {
         choices: [{ label: 'Go back to the platform' }] });
       return;
     }
-    beginPrimary();
+    record({ t: 'lock' });
   };
 }
 
@@ -870,7 +1183,7 @@ function scrPrimary(el) {
     const b = h(`<div class="prov ${afford ? '' : 'stripped'}" style="grid-template-columns:1fr 66px">
       <div><div class="nm">${esc(m.name)}</div><div class="note">${esc(m.tip)}</div></div>
       <div class="fig">${m.id === 'money' ? '<span style="color:var(--green)">+cash</span>' : '−' + money(m.cost)}</div></div>`);
-    if (afford) b.onclick = () => doPrimaryMove(m);
+    if (afford) b.onclick = () => record({ t: 'pm', i: m.id });
     mv.appendChild(b);
   }
 
@@ -916,7 +1229,7 @@ function scrPrimary(el) {
   if (leader) renderBlocBars(el.querySelector('#pbars'), p, leader, primaryElectorate(p.partyId));
   renderLog(el.querySelector('#log'));
 
-  el.querySelector('#hold').onclick = () => holdContest();
+  el.querySelector('#hold').onclick = () => record({ t: 'hold' });
 }
 
 function primaryPolls(contest, live) {
@@ -1018,7 +1331,7 @@ async function holdContest() {
     p.baseMorale = clamp(p.baseMorale - 7, 10, 95);
     p.negatives += 5;
     refreshCandidate(p);
-    await showModal({
+    await choose('holdContest:1', {
       kicker: 'The Tape', title: 'Someone Was Recording',
       text: 'Ninety seconds of you in a ballroom, explaining to donors what you privately think of the position you ran on, is now the top story on three networks. Your own volunteers are the ones sending it to each other.',
       choices: [{ label: 'Issue a statement' }]
@@ -1037,7 +1350,7 @@ async function primaryEvent() {
   const p = G.player;
   const ev = pick(CAMPAIGN_EVENTS);
   const iss = pick(ISSUES.filter(i => p.platform.signature.includes(i.id)).concat(ISSUES)).name;
-  const idx = await showModal({
+  const idx = await choose('primaryEvent:1', {
     kicker: 'On the Trail', title: ev.title,
     text: esc(ev.text.replace('{ISSUE}', iss)),
     choices: ev.choices.map(c => ({ label: c.label, tags: effectTags(effectSummary(c.eff, 'campaign')) }))
@@ -1082,7 +1395,7 @@ async function resolveNomination() {
   const plurality = all[0][0] === 'player';
 
   if (majority) {
-    await showModal({ kicker: 'The Nomination', title: 'You Clinch It',
+    await choose('resolveNomination:1', { kicker: 'The Nomination', title: 'You Clinch It',
       text: `You cross the majority threshold with <b>${mine}</b> of ${total} delegates. The party is yours — the parts of it that are speaking to you, anyway.`,
       choices: [{ label: 'Accept the nomination →' }] });
     return beginVeep();
@@ -1092,11 +1405,11 @@ async function resolveNomination() {
     const centerPenalty = Math.abs(platformCenter(p.platform)) > 1.35 ? -0.25 : 0.12;
     const odds = clamp(0.42 + (mine / total - 0.35) * 2.4 + centerPenalty + (pr.momentum / 60), 0.08, 0.94);
     const win = rnd() < odds;
-    await showModal({ kicker: 'A Contested Convention', title: 'Nobody Has a Majority',
+    await choose('resolveNomination:2', { kicker: 'A Contested Convention', title: 'Nobody Has a Majority',
       text: `You lead with <b>${mine}</b> of ${total} delegates but no one has a majority. It goes to a second ballot, where the unpledged delegates — governors, members of Congress, and the state chairs you have or have not been nice to — decide.<br><br>Your standing with them: <b>${Math.round(odds * 100)}%</b>.`,
       choices: [{ label: 'Take the second ballot' }] });
     if (win) {
-      await showModal({ kicker: 'The Second Ballot', title: 'They Give It To You',
+      await choose('resolveNomination:3', { kicker: 'The Second Ballot', title: 'They Give It To You',
         text: 'The establishment concludes you are the least bad option available. It is not the mandate you wanted, and your base noticed how it happened.',
         choices: [{ label: 'Accept the nomination →' }] });
       p.baseMorale = clamp(p.baseMorale - 7, 10, 95);
@@ -1108,7 +1421,7 @@ async function resolveNomination() {
 }
 
 async function primaryLoss(reason) {
-  await showModal({ kicker: 'The End of the Road', title: 'You Concede',
+  await choose('primaryLoss:1', { kicker: 'The End of the Road', title: 'You Concede',
     text: esc(reason) + '<br><br>You give a gracious speech, endorse the nominee, and are mentioned as a possible Secretary of Commerce.',
     choices: [{ label: 'See the post-mortem' }] });
   G.gov = { failedAt: 'primary', platform: G.player.platform, approval: 0, econ: 0, laws: [], enacted: {},
@@ -1144,7 +1457,7 @@ function beginVeep() {
 
 async function showVeep() {
   const p = G.player;
-  const idx = await showModal({
+  const idx = await choose('showVeep:1', {
     kicker: 'The Ticket', title: 'Choose a Running Mate',
     text: 'The vice presidency is worth about one state and a great deal of internal peace. Choose which you need.',
     choices: G.veepOptions.map(v => ({ label: v.name, hint: v.desc }))
@@ -1351,10 +1664,8 @@ function scrGeneral(el) {
     </div>`;
   const full = el.querySelector('#sfile .full-file');
   if (full) full.onclick = () => openStateFile(gn.target, tgt);
-  el.querySelectorAll('#sfile .pbtn').forEach(b => b.onclick = () => {
-    gn.efforts[gn.target].posture = b.dataset.pos;
-    updateProjection(); render();
-  });
+  el.querySelectorAll('#sfile .pbtn').forEach(b => b.onclick = () =>
+    record({ t: 'gpost', a: gn.target, v: b.dataset.pos }));
 
   // opposition summary
   const ob = el.querySelector('#oppbox');
@@ -1385,7 +1696,7 @@ function scrGeneral(el) {
            ${pv.perDollar ? `<span class="per">${(pv.perDollar * 100).toFixed(2)} per $10M</span>` : ''}`}</div>
       <div class="fig">${a.cost ? '−' + money(a.cost) : '<span class="g">+cash</span>'}<br>
         <span class="muted tiny">${a.days ? a.days + ' day' + (a.days > 1 ? 's' : '') : 'no days'}</span></div></div>`);
-    if (ok) row.onclick = () => doCampaignAction(a);
+    if (ok) row.onclick = () => record({ t: 'camp', i: a.id, a: gn.target });
     aw.appendChild(row);
   }
 
@@ -1405,7 +1716,7 @@ function scrGeneral(el) {
 
   renderBlocBars(el.querySelector('#gbars'), p, G.opp, nationalWeights());
   renderLog(el.querySelector('#log'));
-  el.querySelector('#endweek').onclick = () => endCampaignWeek();
+  el.querySelector('#endweek').onclick = () => record({ t: 'endweek' });
 }
 
 /* Two generic nominees on the current map: the yardstick every "you are
@@ -1530,7 +1841,7 @@ async function doCampaignAction(a) {
   if (a.picksBloc) {
     const prof = stateProfile(t, p, G.opp, G.env, gn.efforts, null);
     const ranked = prof.blocs.slice().sort((x, y) => y.size - x.size);
-    const idx = await showModal({
+    const idx = await choose('doCampaignAction:1', {
       kicker: a.id === 'attack' ? 'Negative Targeting' : 'Audience', title: `Which Bloc, in ${STATE_BY_ABBR[t].name}?`,
       text: a.id === 'attack'
         ? 'Money aimed at one group is worth far more per dollar than money sprayed at a state. A negative buy works best where they are currently winning — you are not persuading, you are dampening.'
@@ -1642,7 +1953,7 @@ async function endCampaignWeek() {
   if (gn.week === 4 || gn.week === 7) await generalEvent(gn.week === 4 ? 'debate' : null);
   else if (rnd() < 0.5) await generalEvent();
 
-  if (gn.week > 10) return runElectionNight();
+  if (gn.week > 10) return runElectionNight();   // returns a promise; the caller awaits
   updateProjection();
   render();
 }
@@ -1651,7 +1962,7 @@ async function generalEvent(force) {
   const p = G.player, gn = G.general;
   const ev = force ? CAMPAIGN_EVENTS.find(e => e.id === 'debate') : pick(CAMPAIGN_EVENTS);
   const iss = pick(ISSUES).name;
-  const idx = await showModal({
+  const idx = await choose('generalEvent:1', {
     kicker: force === 'debate' ? 'Ninety Minutes, Live' : 'The Campaign',
     title: ev.title, text: esc(ev.text.replace('{ISSUE}', iss)),
     choices: ev.choices.map(c => ({ label: c.label, tags: effectTags(effectSummary(c.eff, 'campaign')) }))
@@ -1671,9 +1982,21 @@ function runElectionNight() {
   G.general.called = [];
   G.general.baseline = genericBaseline(G.player.partyId);
   orderTheNight(result);
+  return openTheNight();
+}
+
+/* Election night is theatre built out of timers, and a replay has neither an
+   audience nor time. Reconstructing a save calls every state at once and goes
+   straight to the aftermath, which is the same arithmetic without the pauses. */
+function openTheNight() {
+  if (quiet()) {
+    G.general.called = G.general.result.order.map(s => s.abbr);
+    return finishNight();
+  }
   G.screen = 'night';
   render();
   stepNight();
+  return Promise.resolve();
 }
 
 /* The order the desk calls them in, which is the entire source of the drama.
@@ -1791,7 +2114,7 @@ async function finishNight() {
   // The second election ends the game rather than starting a term.
   if (G.general.reelection) {
     const g = G.gov;
-    await showModal({
+    await choose('finishNight:1', {
       kicker: 'Four Years Later', title: won ? `${p.name} Is Re-Elected` : `${G.opp2.name} Wins`,
       text: `<b>${r.evP}</b> to <b>${r.evO}</b> in the electoral college; ${pct(pop, 1)} of the two-party vote.
         Tipping-point state: <b>${esc(r.tipping.name)}</b> at ${sgn(r.tipping.margin * 100, 1)}.<br><br>
@@ -1814,7 +2137,7 @@ async function finishNight() {
     G.screen = 'results';
     return render();
   }
-  await showModal({
+  await choose('finishNight:2', {
     kicker: won ? 'The Networks Call It' : 'The Concession',
     title: won ? `${p.name} Is Elected President` : `${G.opp.name} Wins`,
     text: `<b>${r.evP}</b> electoral votes to <b>${r.evO}</b>. Popular vote: ${pct(pop, 1)} to ${pct(1 - pop, 1)}.<br><br>
@@ -1962,18 +2285,24 @@ function scrResults(el) {
         : 'Even sweeping the close ones would not have been enough.';
     })()}</div>`;
 
-  el.querySelector('#go').onclick = () => {
-    if (G.results.next === 'govern') return beginGovernment(G.results.r);
-    if (G.results.next === 'secondTerm') return beginSecondTerm();
-    if (G.results.next === 'final') {
-      if (!G.gov) {
-        G.gov = { failedAt: 'general', platform: p.platform, approval: 0, econ: 0, laws: [], enacted: {},
-          baseMorale: p.baseMorale, deficit: 0, institutionalDamage: 0, reelected: null, quarter: 0,
-          result: G.results.r, outcomes: {} };
-      }
-      G.screen = 'final'; render();
+  el.querySelector('#go').onclick = () => record({ t: 'go' });
+}
+
+/* What the button on the results screen actually does. Out here rather than
+   closed over inside the screen, because the replayer has to reach it without
+   the screen having been drawn. */
+function advanceFromResults() {
+  const p = G.player;
+  if (G.results.next === 'govern') return beginGovernment(G.results.r);
+  if (G.results.next === 'secondTerm') return beginSecondTerm();
+  if (G.results.next === 'final') {
+    if (!G.gov) {
+      G.gov = { failedAt: 'general', platform: p.platform, approval: 0, econ: 0, laws: [], enacted: {},
+        baseMorale: p.baseMorale, deficit: 0, institutionalDamage: 0, reelected: null, quarter: 0,
+        result: G.results.r, outcomes: {} };
     }
-  };
+    G.screen = 'final'; render();
+  }
 }
 
 /* ==========================================================================
@@ -2195,7 +2524,7 @@ function scrGovern(el) {
         <span class="eff-tag ${proj.enemyWill < 0 ? 'good' : 'bad'}">Their will <b>${sgn(proj.enemyWill, 1)}</b></span>
         <span class="eff-tag bad">Casualties <b>${proj.out.casualties.toFixed(1)}k</b></span></div>
       <div class="fig"><span class="wk">${w.weeksThisQuarter} wk</span><br><span class="muted tiny">committed</span></div></div>`);
-    row.onclick = () => enterWarRoom();
+    row.onclick = () => record({ t: 'warroom' });
     aw.appendChild(row);
   }
 
@@ -2218,12 +2547,7 @@ function scrGovern(el) {
           ${!ok ? '<div class="blocked">No weeks left this quarter.</div>' : ''}</div>
         <div class="gain">${effectTags(effectSummary(s.resolved, 'gov'))}</div>
         <div class="fig"><span class="wk">${put} wk</span><br><span class="muted tiny">put in</span></div></div>`);
-      if (ok) row.onclick = () => {
-        live.put += put; g.weeks -= put;
-        g.done.push(s.working);
-        logMsg(`${put} week${put === 1 ? '' : 's'} on ${s.name.toLowerCase()}.`, '', `Q${g.quarter}`);
-        render();
-      };
+      if (ok) row.onclick = () => record({ t: 'sitwk', i: s.id });
       aw.appendChild(row);
     }
   }
@@ -2249,7 +2573,7 @@ function scrGovern(el) {
         : `<span class="eff-tag ${x.good ? 'good' : 'bad'}">${esc(x.label)}
              <b>${x.raw ? esc(String(x.value)) : (x.value > 0 ? '+' : '−') + Math.abs(x.value)}</b></span>`).join('')}</div>
       <div class="fig"><span class="wk">${a.weeks} wk</span><br>${a.cost ? a.cost + ' cap' : '—'}</div></div>`);
-    if (ok) row.onclick = () => doGovAction(a);
+    if (ok) row.onclick = () => record({ t: 'gov', i: a.id });
     aw.appendChild(row);
   }
 
@@ -2347,19 +2671,19 @@ function scrGovern(el) {
 
   renderLog(el.querySelector('#log'));
   const tw = el.querySelector('#towar');
-  if (tw) tw.onclick = () => enterWarRoom();
-  el.querySelector('#endq').onclick = () => endQuarter();
+  if (tw) tw.onclick = () => record({ t: 'warroom' });
+  el.querySelector('#endq').onclick = () => record({ t: 'endq' });
 }
 
 async function doGovAction(a) {
   const g = G.gov, p = G.player;
   if (a.id === 'bill') {
     const avail = BILLS.filter(b => !g.billsDone.includes(b.id));
-    if (!avail.length) { await showModal({ title: 'The Agenda Is Exhausted', text: 'Every vehicle has been used this term.', choices: [{ label: 'Back' }] }); return; }
+    if (!avail.length) { await choose('doGovAction:1', { title: 'The Agenda Is Exhausted', text: 'Every vehicle has been used this term.', choices: [{ label: 'Back' }] }); return; }
     // What each vehicle is worth before you spend six weeks on it: how far
     // your promise on that issue still is from what is enacted, and what the
     // full bill would do to the country.
-    const idx = await showModal({
+    const idx = await choose('doGovAction:2', {
       kicker: 'Legislative Strategy', title: 'Which Bill?',
       text: 'You have the floor time for one major bill. Leadership wants to know which.',
       choices: avail.map(b => {
@@ -2390,7 +2714,7 @@ async function doGovAction(a) {
   const comp = (g.perk === 'executive' ? 1.15 : 1) * (1 + g.competence * 0.05);
 
   if (a.id === 'exec') {
-    const idx = await showModal({
+    const idx = await choose('doGovAction:3', {
       kicker: 'Article II', title: 'Executive Action',
       text: 'A pen and a phone. You get roughly 55% of the policy, none of the votes, and a lawsuit filed within the hour.',
       choices: ISSUES.filter(i => g.enacted[i.id] === undefined).slice(0, 6).map(i => ({
@@ -2412,7 +2736,7 @@ async function doGovAction(a) {
     logMsg(`Executive order signed on ${iss.name}. Effective immediately; challenged by 3pm.`, 'good', `Q${g.quarter}`);
     // Benches you have filled are benches that do not enjoin you on a Friday.
     if (rnd() < Math.max(0.10, 0.42 - g.judiciary * 0.07)) {
-      await showModal({ kicker: 'The Courts', title: 'Enjoined',
+      await choose('doGovAction:4', { kicker: 'The Courts', title: 'Enjoined',
         text: `A district judge stays your ${esc(iss.name.toLowerCase())} order nationwide. It will be at the Supreme Court in eighteen months, which is to say after the midterms.`,
         choices: [{ label: 'Appeal' }] });
       g.enacted[iss.id] = enactedPos * 0.35;
@@ -2425,9 +2749,9 @@ async function doGovAction(a) {
     // A rule is slower and costlier than an order and it does not evaporate.
     const pool = ISSUES.filter(i => g.enacted[i.id] === undefined);
     if (!pool.length) { g.capital += a.cost; g.weeks += a.weeks; g.done.pop();
-      await showModal({ title: 'Nothing Left to Regulate', text: 'Every issue on your platform has already been addressed one way or another.', choices: [{ label: 'Back' }] });
+      await choose('doGovAction:5', { title: 'Nothing Left to Regulate', text: 'Every issue on your platform has already been addressed one way or another.', choices: [{ label: 'Back' }] });
       return render(); }
-    const idx = await showModal({
+    const idx = await choose('doGovAction:6', {
       kicker: 'The Federal Register', title: 'Direct a Rulemaking',
       text: 'Eighteen months of notice and comment, an administrative record built to survive review, and a rule that the next president has to run the same process in reverse to undo. Roughly three quarters of the policy, and it holds.',
       choices: pool.slice(0, 6).map(i => ({
@@ -2444,7 +2768,7 @@ async function doGovAction(a) {
     g.oppEnergy += 3;
     logMsg(`Final rule published on ${iss.name}. It took a year and it will outlast you.`, 'good', `Q${g.quarter}`);
     if (rnd() < Math.max(0.04, 0.16 - g.judiciary * 0.03)) {
-      await showModal({ kicker: 'The Courts', title: 'Vacated and Remanded',
+      await choose('doGovAction:7', { kicker: 'The Courts', title: 'Vacated and Remanded',
         text: 'A circuit panel finds the record inadequate under the Administrative Procedure Act. The agency can try again, with a better record and eighteen more months.',
         choices: [{ label: 'Send it back to the agency' }] });
       g.enacted[iss.id] = enactedPos * 0.5;
@@ -2482,7 +2806,7 @@ async function doGovAction(a) {
     const cash = isSwing ? 30 : 0;
     if (isSwing && g.campFunds < cash) {
       g.capital += a.cost; g.weeks += a.weeks; g.done.pop();
-      await showModal({ title: 'The Campaign Cannot Pay For It', text: `A swing costs ${money(cash)} and you have ${money(g.campFunds)}. Spend a quarter on finance first.`, choices: [{ label: 'Back' }] });
+      await choose('doGovAction:8', { title: 'The Campaign Cannot Pay For It', text: `A swing costs ${money(cash)} and you have ${money(g.campFunds)}. Spend a quarter on finance first.`, choices: [{ label: 'Back' }] });
       return render();
     }
     g.campFunds -= cash;
@@ -2553,7 +2877,7 @@ async function endQuarter() {
 /* A second term does not end at a ballot box. It ends. */
 async function finishSecondTerm() {
   const g = G.gov;
-  await showModal({
+  await choose('finishSecondTerm:1', {
     kicker: 'January 20th', title: 'The Term Ends',
     text: `Eight years, <b>${g.laws.length}</b> laws and orders, and a successor being sworn in on the
       steps behind you. Approval closes at <b>${Math.round(g.approval)}%</b>.<br><br>
@@ -2590,7 +2914,7 @@ async function beginSecondTerm() {
   g.seats = caucusSeats(g.congress, p.partyId);
   g.capital = quarterlyCapital(g);
 
-  await showModal({
+  await choose('beginSecondTerm:1', {
     kicker: 'The Second Inaugural', title: 'Four More Years, and a Shorter Leash',
     text: `A new Congress: <b>${g.congress.house.P}–${g.congress.house.O}</b> House,
       <b>${g.congress.senate.P}–${g.congress.senate.O}</b> Senate. Every legislative vehicle is
@@ -2631,7 +2955,7 @@ async function beginReelection() {
   g.camp = { efforts, target: 'PA', proj: null };
   updateCampProjection();
 
-  await showModal({
+  await choose('beginReelection:1', {
     kicker: 'The Election Year', title: `${opp2.name} Is the Nominee`,
     text: `The other party has settled on a challenger, and you are now doing two jobs with the same thirteen weeks a quarter.<br><br>
       Your record is the campaign: approval is at <b>${Math.round(g.approval)}%</b>, the economy is
@@ -2672,9 +2996,7 @@ function runReelectionNight() {
   G.opp = G.opp2;   // the night screen names whoever is in G.opp
   G.general = { result, called: [], baseline: genericBaseline(p.partyId, g.env2), reelection: true,
                 efforts: g.camp.efforts, week: 10, days: 0, money: g.campFunds, proj: g.camp.proj };
-  G.screen = 'night';
-  render();
-  stepNight();
+  return openTheNight();
 }
 
 /* ==========================================================================
@@ -2689,7 +3011,7 @@ async function raiseSituation() {
   const s = pick(pool);
   g.seenSituations.push(s.id);
   g.situations.push({ id: s.id, put: 0, due: g.quarter + s.quarters });
-  await showModal({
+  await choose('raiseSituation:1', {
     kicker: 'It Lands on the Desk', title: s.name,
     text: esc(s.desc) + `<br><br>Handling it takes <b>${s.weeks} weeks</b> of your time, and you have
       <b>${s.quarters} quarter${s.quarters === 1 ? '' : 's'}</b> before it stops being something you
@@ -2709,12 +3031,12 @@ async function advanceSituations() {
     const s = SITUATIONS.find(x => x.id === live.id);
     if (live.put >= s.weeks) {
       applyGovEffect(s.resolved);
-      await showModal({ kicker: 'Resolved', title: s.name, text: esc(s.resolvedText),
+      await choose('advanceSituations:1', { kicker: 'Resolved', title: s.name, text: esc(s.resolvedText),
         choices: [{ label: 'Back to the agenda', tags: effectTags(effectSummary(s.resolved, 'gov')) }] });
       logMsg(`${s.name}: handled.`, 'good', `Q${g.quarter}`);
     } else if (g.quarter >= live.due) {
       applyGovEffect(s.ignored);
-      await showModal({ kicker: 'It Got Away From You', title: s.name, text: esc(s.ignoredText),
+      await choose('advanceSituations:2', { kicker: 'It Got Away From You', title: s.name, text: esc(s.ignoredText),
         choices: [{ label: 'Back to the agenda', tags: effectTags(effectSummary(s.ignored, 'gov')) }] });
       logMsg(`${s.name}: you never got in front of it.`, 'bad', `Q${g.quarter}`);
     } else still.push(live);
@@ -2750,7 +3072,7 @@ async function governingEvent() {
     .replace('{DEPT}', pick(DEPTS))
     .replace('{CAUCUS}', caucusName)
     .replace('{ISSUE}', pick(ISSUES).name);
-  const idx = await showModal({
+  const idx = await choose('governingEvent:1', {
     kicker: `Quarter ${g.quarter}`, title: ev.title, text: esc(text),
     choices: ev.choices.map(c => ({ label: c.label, tags: effectTags(effectSummary(c.eff, 'gov')) }))
   });
@@ -2772,7 +3094,7 @@ async function runMidterms() {
   g.congress.senate.O = 100 - g.congress.senate.P;
   g.seats = caucusSeats(g.congress, g.playerParty);
   const kept = g.congress.house.P >= 218;
-  await showModal({
+  await choose('runMidterms:1', {
     kicker: 'The Midterms', title: kept ? 'You Hold the House' : 'You Lose the House',
     text: `Net change: <b>${sgn(house, 0)}</b> House seats, <b>${sgn(senate, 0)}</b> Senate seats.<br><br>
       New Congress: <b>${g.congress.house.P}–${g.congress.house.O}</b> House, <b>${g.congress.senate.P}–${g.congress.senate.O}</b> Senate.<br><br>
@@ -2788,7 +3110,11 @@ async function runMidterms() {
 /* ==========================================================================
    9. BILL — drafting and whipping
    ========================================================================== */
-function scrBill(el) {
+/* Everything the drafting screen and the floor vote both derive from the
+   current draft. One function, so the screen and the vote cannot come to
+   different conclusions about what is actually in the bill — and so the vote
+   can be replayed without the screen ever having been drawn. */
+function billContext() {
   const g = G.gov, B = G.bill, bill = B.bill;
   const byrd = applyByrd(bill, B.selected);
   const effective = B.reconciliation ? byrd.kept : B.selected;
@@ -2799,9 +3125,13 @@ function scrBill(el) {
     boosts: mergeBoosts(gp.boosts, B.boosts), pulpit: B.pulpit,
     reconciliation: B.reconciliation, filibusterGone: g.filibusterGone, vehicle: B.vehicle
   };
-  const wc = whipCount(bill, effective, ctx);
+  return { g, B, bill, byrd, effective, gp, ctx,
+    wc: whipCount(bill, effective, ctx), bs: billState(bill, effective) };
+}
+
+function scrBill(el) {
+  const { g, B, bill, byrd, effective, gp, ctx, wc, bs } = billContext();
   const impact = provisionImpact(bill, B.selected, ctx, B.reconciliation);
-  const bs = billState(bill, effective);
   const promised = g.platform.positions[bill.issue];
 
   el.appendChild(h(`<div class="fade-in">
@@ -2884,11 +3214,7 @@ function scrBill(el) {
         <span class="vv">${delta(im.dSenate, { dp: 0, dead: 0.5 })}<i>S</i></span>
       </div>
       <div class="fig">${bn(pv.cost)}<br><span class="muted tiny">pos ${sgn(pv.pos, 1)}</span></div></div>`);
-    row.onclick = () => {
-      const i = B.selected.indexOf(pv.id);
-      if (i >= 0) B.selected.splice(i, 1); else B.selected.push(pv.id);
-      render();
-    };
+    row.onclick = () => record({ t: 'prov', i: pv.id });
     pw.appendChild(row);
   }
 
@@ -2915,7 +3241,7 @@ function scrBill(el) {
       </div></div>`);
     ww.appendChild(row);
   }
-  ww.querySelectorAll('[data-deal]').forEach(b => b.onclick = () => makeDeal(b.dataset.deal));
+  ww.querySelectorAll('[data-deal]').forEach(b => b.onclick = () => record({ t: 'deal', i: b.dataset.deal }));
 
   // meters
   el.querySelector('#meters').innerHTML =
@@ -2950,14 +3276,14 @@ function scrBill(el) {
   // tools
   const tw = el.querySelector('#tools');
   const tools = [
-    { id: 'recon', name: B.reconciliation ? 'Return to Regular Order' : 'Move Under Reconciliation', cost: 6,
+    { id: 'recon', name: B.reconciliation ? 'Return to Regular Order' : 'Move Under Reconciliation', cost: BILL_TOOL_COST.recon,
       desc: B.reconciliation ? 'Go back to sixty votes and restore the struck provisions.'
         : `Fifty votes in the Senate. The Byrd rule strips ${bill.provisions.filter(x => !x.byrd && B.selected.includes(x.id)).length} of your provisions.` },
-    { id: 'pulpit', name: 'Take It to the Country', cost: 9,
+    { id: 'pulpit', name: 'Take It to the Country', cost: BILL_TOOL_COST.pulpit,
       desc: 'A prime-time push. Moves the members whose seats you carried; irrelevant to the ones you did not.' },
-    { id: 'vehicle', name: 'Attach to a Must-Pass Vehicle', cost: 14,
+    { id: 'vehicle', name: 'Attach to a Must-Pass Vehicle', cost: BILL_TOOL_COST.vehicle,
       desc: g.vehicleUsed ? 'Already used this term.' : 'Hang it on the NDAA. Everyone gets a vote they can explain. Once per term.' },
-    { id: 'nuke', name: 'Abolish the Filibuster', cost: 26,
+    { id: 'nuke', name: 'Abolish the Filibuster', cost: BILL_TOOL_COST.nuke,
       desc: g.filibusterGone ? 'Already done. There is no undoing it.'
         : 'Fifty votes for everything, forever, for both parties. Your institutionalists will not forgive it.' }
   ];
@@ -2967,7 +3293,7 @@ function scrBill(el) {
     const row = h(`<div class="prov ${ok ? '' : 'stripped'}" style="grid-template-columns:1fr 56px">
       <div><div class="nm">${esc(t.name)}</div><div class="note">${esc(t.desc)}</div></div>
       <div class="fig">${t.cost} cap</div></div>`);
-    if (ok) row.onclick = () => useTool(t);
+    if (ok) row.onclick = () => record({ t: 'tool', i: t.id });
     tw.appendChild(row);
   }
 
@@ -2979,13 +3305,8 @@ function scrBill(el) {
           d.reaction > 0.5 ? 'campaigning for' : d.reaction > 0 ? 'supportive' : d.reaction > -0.5 ? 'opposed' : 'ALL-OUT WAR'}</span></div>`).join('')
     : '<span class="muted">Nobody outside Washington has noticed this bill.</span>';
 
-  el.querySelector('#floor').onclick = () => bringToFloor(wc, bs, effective);
-  el.querySelector('#shelve').onclick = async () => {
-    await showModal({ title: 'Shelve It', text: 'The bill goes back to committee. You keep your capital and lose the quarter.',
-      choices: [{ label: 'Shelve it' }, { label: 'Keep working' }] }).then(i => {
-        if (i === 0) { spendBillWeeks(); logMsg(`${bill.name} is pulled from the floor.`, 'bad', `Q${G.gov.quarter}`); G.screen = 'govern'; render(); }
-      });
-  };
+  el.querySelector('#floor').onclick = () => record({ t: 'floor' });
+  el.querySelector('#shelve').onclick = () => record({ t: 'shelve' });
 }
 
 /* Floor time is charged when the bill leaves the drafting table, however it
@@ -3025,12 +3346,18 @@ function makeDeal(caucusId) {
   render();
 }
 
-async function useTool(t) {
+/* What each floor tactic costs. Lives out here because the decision log
+   carries an id, and the handler has to be able to price the tool without the
+   bill screen having been drawn. */
+const BILL_TOOL_COST = { recon: 6, pulpit: 9, vehicle: 14, nuke: 26 };
+
+async function useTool(id) {
   const g = G.gov, B = G.bill;
+  const t = { id, cost: BILL_TOOL_COST[id] };
   if (t.id === 'recon') {
     if (!B.reconciliation) {
       const stripped = B.bill.provisions.filter(x => !x.byrd && B.selected.includes(x.id));
-      const i = await showModal({
+      const i = await choose('useTool:1', {
         kicker: 'The Byrd Rule', title: 'Move Under Reconciliation?',
         text: `The Senate parliamentarian will strike anything that is not primarily budgetary. You would lose:<br><br>${
           stripped.length ? stripped.map(s => '• ' + esc(s.name)).join('<br>') : '• nothing — this bill is all money'}<br><br>
@@ -3050,7 +3377,7 @@ async function useTool(t) {
     g.capital -= t.cost; B.vehicle = true; g.vehicleUsed = true;
     logMsg('The bill is attached to the defense authorization. Everyone gets cover.', 'good', `Q${g.quarter}`);
   } else if (t.id === 'nuke') {
-    const i = await showModal({
+    const i = await choose('useTool:2', {
       kicker: 'The Nuclear Option', title: 'Abolish the Legislative Filibuster?',
       text: 'Fifty votes passes everything from this moment on — for you, and for whoever holds the chamber next. Two of your own senators have said they will not vote for the rules change, and the ones who do will remember that you asked.',
       choices: [{ label: 'Break it. We came here to legislate.' }, { label: 'Leave the Senate as it is' }]
@@ -3066,10 +3393,11 @@ async function useTool(t) {
   render();
 }
 
-async function bringToFloor(wc, bs, effective) {
+async function bringToFloor() {
+  const { wc, bs, effective } = billContext();
   const g = G.gov, B = G.bill, bill = B.bill;
   if (!effective.length) {
-    await showModal({ title: 'There Is No Bill', text: 'You cannot pass an empty vehicle. Add provisions.', choices: [{ label: 'Back' }] });
+    await choose('bringToFloor:1', { title: 'There Is No Bill', text: 'You cannot pass an empty vehicle. Add provisions.', choices: [{ label: 'Back' }] });
     return;
   }
   // A last flicker of uncertainty: a couple of members are always a surprise.
@@ -3093,7 +3421,7 @@ async function bringToFloor(wc, bs, effective) {
     const onPromise = Math.abs(bs.pos - promised) <= 0.7;
     g.baseMorale = clamp(g.baseMorale + (onPromise ? 5 : -6), 10, 95);
     logMsg(`${bill.name} passes the House ${houseFinal}–${435 - houseFinal} and the Senate ${senateFinal}–${100 - senateFinal}.`, 'big', `Q${g.quarter}`);
-    await showModal({
+    await choose('bringToFloor:2', {
       kicker: 'Signed in the East Room', title: `${bill.name} Is Law`,
       text: `House <b>${houseFinal}–${435 - houseFinal}</b>. Senate <b>${senateFinal}–${100 - senateFinal}</b>.<br><br>
         Enacted position <b>${sgn(bs.pos, 2)}</b> against a promise of <b>${sgn(promised, 2)}</b>.
@@ -3109,7 +3437,7 @@ async function bringToFloor(wc, bs, effective) {
     g.baseMorale = clamp(g.baseMorale - 7, 10, 95);
     g.oppEnergy += 6;
     logMsg(`${bill.name} fails. House ${houseFinal}, Senate ${senateFinal}.`, 'bad', `Q${g.quarter}`);
-    await showModal({
+    await choose('bringToFloor:3', {
       kicker: 'The Vote', title: `${bill.name} Fails`,
       text: `House <b>${houseFinal}</b> of 218 needed. Senate <b>${senateFinal}</b> of ${wc.senateNeeded} needed. Short by ${gap}.<br><br>
         The vehicle is spent for this Congress. Your capital is gone, your base is furious, and the opposition has a clip of you promising it would pass.`,
@@ -3309,7 +3637,7 @@ function enterWarRoom() {
 async function openWar() {
   const g = G.gov;
   g.war = createWar(g.quarter);
-  await showModal({
+  await choose('openWar:1', {
     kicker: 'Four in the Morning', title: `${WAR_THEATRE.foeAdj} Forces Cross the Frontier`,
     text: `${esc(WAR_THEATRE.cable)}<br><br>${esc(WAR_THEATRE.brief)}<br><br>
       The theatre commander wants orders every quarter. Giving them takes weeks you were going
@@ -3344,7 +3672,7 @@ async function endWarQuarter() {
   }).join('');
 
   if (!w.ended) {
-    await showModal({
+    await choose('endWarQuarter:1', {
       kicker: `The Theatre · Quarter ${w.turn}`, title: out.progress > 1.2 ? 'The Line Moves'
         : out.progress < -1.2 ? 'They Push' : 'A Quarter of Nothing Much',
       html: `<div class="imp-list">${rows || '<div class="drow"><span class="dk">The line holds everywhere</span></div>'}</div>
@@ -3386,7 +3714,7 @@ async function finishWar(terms, how) {
     rout: `The appropriation fails on the floor and the withdrawal begins whether or not you have authorised it. The last aircraft out is the photograph that goes in the textbooks, and it is a photograph of your presidency.`
   }[terms.id];
 
-  await showModal({
+  await choose('finishWar:1', {
     kicker: cap ? 'They Capitulate' : w.ended === 'collapse' ? 'The Money Runs Out' : 'The War Ends',
     title: E.title,
     text: `${esc(body)}<br><br>
@@ -3404,6 +3732,10 @@ async function finishWar(terms, how) {
     E.grade > 100 ? 'big' : E.grade < 0 ? 'bad' : '', `Q${g.quarter}`);
   G.screen = 'govern';
 }
+
+/* How much force one press of a stepper moves. Out here because the decision
+   handler applies it without the screen having drawn. */
+const WAR_DIV_STEP = 0.5;
 
 /* ---- the war room -------------------------------------------------------- */
 function scrWar(el) {
@@ -3495,8 +3827,8 @@ function scrWar(el) {
   const wdn = wk.querySelector('#wdn'), wup = wk.querySelector('#wup');
   wdn.disabled = w.weeksThisQuarter <= 0;
   wup.disabled = w.weeksThisQuarter >= WAR_CMD_MAX_WEEKS || g.weeks <= 0;
-  wdn.onclick = () => { w.weeksThisQuarter--; g.weeks++; render(); };
-  wup.onclick = () => { w.weeksThisQuarter++; g.weeks--; render(); };
+  wdn.onclick = () => record({ t: 'warwk', d: -1 });
+  wup.onclick = () => record({ t: 'warwk', d: 1 });
 
   /* ---- the fronts ---- */
   const fw = el.querySelector('#fronts');
@@ -3546,21 +3878,21 @@ function scrWar(el) {
         ${need ? '<div class="pb" style="color:var(--amber)">no sorties overhead</div>' : ''}
       </button>`);
       b.title = P.blurb;
-      if (canOrder) b.onclick = () => { f.posture = P.id; render(); };
+      if (canOrder) b.onclick = () => record({ t: 'wpost', f: F.id, v: P.id });
       else b.classList.add('bad');
       pw.appendChild(b);
     }
 
     /* Divisions: moved against the quarter's lift, through the reserve. */
     const dv = row.querySelector('[data-d]');
-    const step = 0.5;
+    const step = WAR_DIV_STEP;
     dv.innerHTML = `<button data-x="-1">−</button><span class="sv">${f.yours.toFixed(1)}</span><button data-x="1">+</button>`;
     const [dm, dp] = dv.querySelectorAll('button');
     dm.disabled = !canOrder || f.yours < step + 0.25 || w.liftLeft < step;
     dp.disabled = !canOrder || w.reserve < step || w.liftLeft < step
       || f.yours >= F.frontage * WAR_DENSITY_CAP;
-    dm.onclick = () => { f.yours -= step; w.reserve += step; w.liftLeft -= step; render(); };
-    dp.onclick = () => { f.yours += step; w.reserve -= step; w.liftLeft -= step; render(); };
+    dm.onclick = () => record({ t: 'wdiv', f: F.id, d: -1 });
+    dp.onclick = () => record({ t: 'wdiv', f: F.id, d: 1 });
     dp.title = f.yours >= F.frontage * WAR_DENSITY_CAP
       ? 'This front cannot absorb any more. Anything else sent here is a traffic problem.' : '';
 
@@ -3569,8 +3901,8 @@ function scrWar(el) {
     const [am, ap] = av.querySelectorAll('button');
     am.disabled = !canOrder || f.air <= 0;
     ap.disabled = !canOrder || airLeft <= 0;
-    am.onclick = () => { f.air--; render(); };
-    ap.onclick = () => { f.air++; render(); };
+    am.onclick = () => record({ t: 'wair', f: F.id, d: -1 });
+    ap.onclick = () => record({ t: 'wair', f: F.id, d: 1 });
 
     fw.appendChild(row);
   }
@@ -3599,7 +3931,7 @@ function scrWar(el) {
       <div class="note">${esc(E.desc)}</div>
       ${why ? `<div class="blocked">${esc(why)}</div>` : ''}${extra}
       ${tags}</div>`);
-    if (ok) row.onclick = () => doWarEscalation(E);
+    if (ok) row.onclick = () => record({ t: 'wesc', i: E.id });
     ew.appendChild(row);
   }
 
@@ -3611,7 +3943,7 @@ async function doWarEscalation(E) {
   const g = G.gov, w = g.war;
   if (E.id === 'talks') {
     const t = warTerms(w);
-    const idx = await showModal({
+    const idx = await choose('doWarEscalation:1', {
       kicker: 'A Third Country, A Hotel', title: 'Open a Channel',
       text: `Terms are exactly as good as the line on the map this morning, and the line this morning
         is <b>${esc(t.label.toLowerCase())}</b>.<br><br>
