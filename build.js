@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = __dirname;
-const SCRIPTS = ['js/data.js', 'js/sim.js', 'js/analysis.js', 'js/ui.js', 'js/main.js'];
+const SCRIPTS = ['js/data.js', 'js/sim.js', 'js/analysis.js', 'js/persist.js', 'js/ui.js', 'js/main.js'];
 const out = process.argv[2] || path.join(ROOT, 'mandate.html');
 
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
