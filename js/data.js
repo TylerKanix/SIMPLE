@@ -1256,6 +1256,15 @@ for (const o of WAR_OUTCOMES) { OUTCOMES.push(o); OUTCOME_BY_ID[o.id] = o; }
    many and they always drift.
    ========================================================================== */
 const PATCH_NOTES = [
+  { v: '1.09', date: '2026-08-24', title: 'Saves, past runs, and a seed for the day',
+    notes: [
+      'The game saves itself. Close the tab mid-primary and the title screen offers Continue, on the same seed, at the same point, with the same platform.',
+      'A save is not a snapshot of the world — it is the seed and the decisions you took. Restoring one replays them. That makes saves small enough to paste into a message: Copy Run Code on the results screen, and Paste a Run on the title screen, and someone else gets your run rather than merely your country.',
+      'Past Runs keeps every finished and abandoned run with its seed, so any of them can be argued with a second time. Copy Run Card writes the whole thing as a dozen lines you can paste anywhere.',
+      'Today\'s Seed gives every player on Earth the same country on the same day. Play it as often as you like; only the first one is not marked practice.',
+      'None of this exists in a browser that refuses to store anything — a private window, or a sandboxed frame. The game notices, hides the buttons that would not work, says why, and plays exactly as before.'
+    ] },
+
   { v: '1.08', date: '2026-08-19', title: 'Patch notes, and a link that keeps its address',
     notes: [
       'Added this panel. It lists every release from 1.07 on.',

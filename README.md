@@ -270,6 +270,37 @@ the institutions, and the voters' verdict.
 
 ---
 
+## Saving, sharing, and the daily seed
+
+A save is not a snapshot of the world. It is the seed and the ordered list of
+decisions taken since, and restoring one replays them through the same code
+paths the clicks took — rendering suppressed, modals answering themselves from
+the log, an entire presidency reconstructed in a few milliseconds. The world is
+whatever those decisions from that seed produce, which is the guarantee the
+game already made about seeds and is the reason a whole run fits in a message.
+
+That has one architectural consequence worth knowing before changing anything:
+**every input the simulation reads goes through one of two doors.** A click
+that starts a flow calls `record(entry)`, which appends to the log and hands it
+to the `DECISIONS` dispatcher. A choice made inside a flow calls `choose(kind,
+opts)` in place of `showModal`. Nothing else may mutate run state — anything
+that does is invisible to the log and will not survive a reload.
+`test/replay.js` is what keeps that honest.
+
+Navigation is deliberately *not* a decision. Opening a dossier or stepping back
+out of the war room changes nothing the simulation reads, so a resumed run can
+land on the act's main screen rather than exactly where the camera was.
+
+The daily seed is derived from the UTC date, so every player gets the same
+country on the same day without asking a server anything. Replays of the same
+day are allowed and marked practice.
+
+Storage may simply not be there — private windows and sandboxed frames make
+even reading `localStorage` throw. The capability is probed once with a real
+write, the dependent buttons are hidden when it fails, and the game says why
+and plays exactly as before. Sharing does not touch storage at all, so export
+and import keep working when nothing else can.
+
 ## Versions
 
 `js/data.js` holds `PATCH_NOTES`, newest first, and the title screen renders it.
@@ -301,8 +332,15 @@ styles.css      stylesheet
 js/data.js      issues, stances, blocs, states, caucuses, groups, bills, events, fronts
 js/sim.js       simulation engine — no DOM
 js/analysis.js  decision pricing, dossiers, state files — no DOM
+js/persist.js   saves, history, settings, the daily seed — storage, no DOM
 js/ui.js        rendering helpers — map, bars, charts, meters, modals
 js/main.js      game flow and screens
 build.js        bundles all of the above into one standalone mandate.html
 publish.js      the same bundle, titled for publishing as an Artifact
+test/           determinism goldens, replay equivalence, storage, stream discipline
 ```
+
+Run `node test/all.js` before committing. The determinism goldens hash five
+scripted paths through the DOM-free layers; a failing hash means the model
+moved, which is a question rather than automatically a bug — regenerate with
+`--update` in the same commit as the change that caused it.

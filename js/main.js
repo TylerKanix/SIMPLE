@@ -371,9 +371,330 @@ function render() {
   ({
     title: scrTitle, setup: scrSetup, platform: scrPlatform, primary: scrPrimary,
     general: scrGeneral, night: scrNight, results: scrResults, govern: scrGovern,
-    bill: scrBill, war: scrWar, final: scrFinal
+    bill: scrBill, war: scrWar, history: scrHistory, final: scrFinal
   })[G.screen](el);
   window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+/* ==========================================================================
+   RUNS — starting, resuming, archiving, sharing
+   ========================================================================== */
+
+/* A daily challenge, once chosen on the title screen, waits here until the
+   candidate is confirmed: the seed is the day's, but who you are is still
+   yours to pick. */
+let _pendingDaily = null;
+
+function beginNewCandidacy() {
+  // A run that is walked away from is still a run. Archive it rather than
+  // letting the next New Candidacy quietly delete it.
+  const prior = storageOK() ? loadRun() : null;
+  if (prior && prior.log && prior.log.length) archiveAbandoned(prior);
+  _pendingDaily = null;
+  clearRun();
+  G.screen = 'setup';
+  render();
+}
+
+function startDaily() {
+  const prior = storageOK() ? loadRun() : null;
+  if (prior && prior.log && prior.log.length) archiveAbandoned(prior);
+  clearRun();
+  _pendingDaily = utcDateString();
+  G.screen = 'setup';
+  render();
+}
+
+/* Resuming is replaying. If the log will not replay — because it was written
+   by a version whose rules have moved, or because it was damaged in transit —
+   say so plainly and offer to throw it away. Never a stack trace, and never a
+   half-applied world left sitting there. */
+async function resumeSavedRun(save) {
+  try {
+    await replaySave(save);
+  } catch (err) {
+    RUN.suspended = true;
+    const stale = save.version !== GAME_VERSION;
+    const idx = await showModal({
+      kicker: 'The Save Will Not Open', title: stale ? 'Written by an Older Version' : 'The Save Is Damaged',
+      text: (stale
+        ? `This run was saved on <b>v${esc(save.version || 'unknown')}</b> and the rules have moved since.
+           Replaying it reached a decision the current game no longer recognises.`
+        : 'Replaying the decisions in this save ran into something that does not fit.') +
+        `<br><br><span class="muted small">${esc(err.message || String(err))}</span><br><br>
+         Nothing has been overwritten. You can keep the save and carry on without it, or discard it.`,
+      choices: [{ label: 'Discard it and start fresh' }, { label: 'Leave it alone' }]
+    });
+    RUN.suspended = false;
+    if (idx === 0) { clearRun(); beginNewCandidacy(); return false; }
+    G.screen = 'title';
+    RUN.log = [];
+    render();
+    return false;
+  }
+  // The replay left the run where the player was; draw it.
+  RUN.suspended = false;
+  if (!G.screen || G.screen === 'setup') G.screen = 'title';
+  render();
+  saveNow();
+  return true;
+}
+
+async function promptImport() {
+  const text = window.prompt('Paste a run code (it begins with MND1:)');
+  if (text === null) return;
+  const r = importRun(text);
+  if (!r.ok) {
+    await showModal({ kicker: 'That Did Not Open', title: 'Not a Run Code', text: esc(r.why),
+      choices: [{ label: 'Back' }] });
+    return;
+  }
+  const prior = storageOK() ? loadRun() : null;
+  if (prior && prior.log && prior.log.length) archiveAbandoned(prior);
+  await resumeSavedRun(r.save);
+}
+
+/* ---- history ------------------------------------------------------------- */
+
+/* What a finished run leaves behind. Enough to argue about, small enough that
+   sixty of them fit in storage without thinking about it. */
+function runSummary(outcome) {
+  const g = G.gov, p = G.player;
+  const s = g ? finalScore(g) : null;
+  const ps = s ? s.ps : null;
+  const promises = g && g.platform ? g.platform.signature.map(id => {
+    const iss = ISSUES.find(x => x.id === id);
+    const promised = g.platform.positions[id];
+    const got = g.enacted[id];
+    return { issue: iss ? iss.short : id,
+      fate: got === undefined ? 'never taken up' : (Math.abs(got - promised) <= 0.7 ? 'kept' : 'watered down') };
+  }) : [];
+  /* One daily counts. Play it again by all means — the seed is the seed — but
+     the second attempt on a given day is practice and says so, because a
+     leaderboard you can grind is not a leaderboard. */
+  const practice = !!(RUN.daily && historyAll()
+    .some(r => r.daily === RUN.daily && r.outcome === 'finished' && !r.practice));
+  return {
+    seed: G.seed,
+    at: nowMs(),
+    started: RUN.startedAt,
+    version: GAME_VERSION,
+    mode: RUN.mode,
+    difficulty: RUN.difficulty,
+    daily: RUN.daily,
+    practice: practice,
+    outcome: outcome,                     // 'finished' | 'abandoned'
+    party: p ? p.partyId : null,
+    name: p ? p.name : 'Unnamed',
+    background: p && p.background ? p.background.name : null,
+    tier: s && !(g && g.failedAt) ? legacyTier(s.total).title : (g && g.failedAt ? 'Also Ran' : null),
+    score: s ? Math.round(s.total) : null,
+    failedAt: g ? g.failedAt || null : null,
+    kept: ps ? ps.kept : 0,
+    broken: ps ? ps.broken : 0,
+    laws: g && g.laws ? g.laws.length : 0,
+    terms: g ? (g.quarter > 17 ? 2 : 1) : 0,
+    reelected: g ? g.reelected : null,
+    war: g && g.war ? (g.war.terms ? g.war.terms.id : 'unresolved') : null,
+    warDead: g && g.war ? Math.round(g.war.casualties * 10) / 10 : null,
+    promises: promises,
+    epitaph: epitaphFor(g, s)
+  };
+}
+
+/* One line that says what the run was. Assembled rather than written, because
+   there are more runs than sentences anyone would write by hand. */
+function epitaphFor(g, s) {
+  if (!g) return 'Withdrew before the first vote.';
+  if (g.failedAt === 'primary') return 'Never got out of the primary.';
+  if (g.failedAt === 'general') return 'Won a nomination and lost a country.';
+  const kept = s ? s.ps.kept : 0, broken = s ? s.ps.broken : 0;
+  if (g.war && g.war.terms && WAR_ENDINGS[g.war.terms.id].grade > 250) return 'Won a war and spent the presidency doing it.';
+  if (g.war && g.war.terms && WAR_ENDINGS[g.war.terms.id].grade < 0) return 'The war is the first line of the obituary.';
+  if (g.institutionalDamage > 4) return 'Got things done, and left the machinery worse than it was found.';
+  if (kept === 3) return 'Kept every promise that mattered.';
+  if (broken >= 2) return 'Governed, and the platform did not survive the whip count.';
+  if (g.reelected === false) return 'One term, and a record the country declined to renew.';
+  if (g.laws.length === 0) return 'Four years, and nothing with a signature on it.';
+  if (g.quarter > 17) return 'Two terms, and a party that had stopped listening by the end.';
+  return 'A presidency. Some of it stuck.';
+}
+
+function archiveRun(outcome) {
+  if (!storageOK()) return;
+  historyAdd(runSummary(outcome));
+}
+
+function archiveAbandoned(save) {
+  // The abandoned run is not the one in memory, so record what the save knows
+  // rather than replaying it just to write a history line.
+  historyAdd({
+    seed: save.seed, at: nowMs(), started: save.at, version: save.version,
+    mode: save.mode, difficulty: save.difficulty, daily: save.daily,
+    outcome: 'abandoned', party: null, name: (save.label || '').split('·').pop().trim() || 'Unnamed',
+    tier: null, score: null, failedAt: null, kept: 0, broken: 0, laws: 0, terms: 0,
+    promises: [], epitaph: 'Set aside unfinished — ' + (save.label || 'a run in progress') + '.'
+  });
+}
+
+/* ---- the run card --------------------------------------------------------
+   Written to be pasted into a group chat, which is where it will live. Twelve
+   lines at the outside, no markdown that renders as noise, and the seed at the
+   bottom so the next person can argue with the same country. */
+function runCard(sum) {
+  const L = [];
+  const party = sum.party ? PARTIES[sum.party].name : '';
+  L.push(`MANDATE — ${sum.daily ? 'Daily, ' + sum.daily + (sum.practice ? ' (practice)' : '') : 'seed ' + sum.seed}`);
+  L.push(`${sum.name}${party ? ' (' + party + ')' : ''}${sum.background ? ', ' + sum.background : ''}`);
+  L.push('');
+  if (sum.failedAt) {
+    L.push(sum.failedAt === 'primary' ? 'Lost the nomination.' : 'Won the nomination, lost the election.');
+  } else {
+    L.push(`${sum.tier}${sum.score === null ? '' : ' — ' + sum.score} · ${sum.terms === 2 ? 'two terms' : 'one term'} · ${sum.laws} signed`);
+  }
+  if (sum.promises.length) {
+    L.push('');
+    for (const pr of sum.promises) L.push(`  ${pr.issue}: ${pr.fate}`);
+  }
+  if (sum.war) {
+    L.push('');
+    L.push(`The war: ${sum.war === 'unresolved' ? 'unfinished when I left' : WAR_ENDINGS[sum.war].title.toLowerCase()}` +
+      (sum.warDead ? ` · ${sum.warDead}k dead` : ''));
+  }
+  L.push('');
+  L.push(sum.epitaph);
+  L.push(sum.daily ? `Same day, same world — try it.` : `Same country, seed ${sum.seed}.`);
+  return L.join('\n');
+}
+
+function sinceLabel(ms) {
+  if (!ms) return '';
+  const d = Math.max(0, nowMs() - ms);
+  const mins = Math.round(d / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + (mins === 1 ? ' minute ago' : ' minutes ago');
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return hrs + (hrs === 1 ? ' hour ago' : ' hours ago');
+  const days = Math.round(hrs / 24);
+  return days + (days === 1 ? ' day ago' : ' days ago');
+}
+
+/* Copying to the clipboard is best-effort: the API is unavailable in plenty of
+   the places this file gets opened, so the text is offered for selection when
+   it fails rather than the button doing nothing. */
+function copyText(text, btn, okLabel) {
+  const done = () => { if (btn) { const t = btn.textContent; btn.textContent = okLabel || 'Copied'; setTimeout(() => { btn.textContent = t; }, 1600); } };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, () => showSheet('Copy This', '', `<textarea class="copybox" readonly>${esc(text)}</textarea>`));
+      return;
+    }
+  } catch (e) { /* fall through to showing it */ }
+  showSheet('Copy This', '', `<textarea class="copybox" readonly>${esc(text)}</textarea>`);
+}
+
+/* ==========================================================================
+   PAST RUNS
+   ========================================================================== */
+function scrHistory(el) {
+  const rows = historyAll();
+  if (!G.results) G.results = {};
+  const sort = G.histSort || 'at';
+  const dir = G.histDir === undefined ? -1 : G.histDir;
+  const val = r => ({
+    at: r.at || 0, score: r.score === null ? -1e9 : r.score, laws: r.laws || 0,
+    seed: r.seed || 0, kept: r.kept || 0
+  })[sort];
+  const sorted = rows.slice().sort((a, b) => (val(a) - val(b)) * dir);
+
+  el.appendChild(h(`<div class="fade-in">
+    ${tickerBar([
+      ['Runs recorded', rows.length],
+      ['Reached office', rows.filter(r => r.tier && r.tier !== 'Also Ran').length],
+      ['Promises kept', rows.reduce((a, r) => a + (r.kept || 0), 0)],
+      ['Wars fought', rows.filter(r => r.war).length]
+    ], 'The Record')}
+    <div class="panel">
+      <div class="panel-head"><h2>Past Runs</h2><span class="spacer"></span>
+        <span class="sub">${rows.length ? 'click a run to read it' : ''}</span></div>
+      ${rows.length ? `<div class="scrollx"><table><thead><tr>
+        <th class="sortb" data-s="at">When</th>
+        <th>Candidate</th>
+        <th>Outcome</th>
+        <th class="num sortb" data-s="kept">Kept</th>
+        <th class="num sortb" data-s="laws">Signed</th>
+        <th class="num sortb" data-s="score">Legacy</th>
+        <th class="num sortb" data-s="seed">Seed</th>
+      </tr></thead><tbody id="hrows"></tbody></table></div>`
+      : `<div class="impact-idle"><p>Nothing here yet. Finished and abandoned runs both land in this
+          table, with the seed, so any of them can be argued with a second time.</p></div>`}
+    </div>
+    <div class="btn-row" style="justify-content:center;margin:20px 0">
+      <button class="btn primary" id="back">← Back</button>
+      ${rows.length ? '<button class="btn ghost" id="wipe">Clear History</button>' : ''}
+    </div>
+  </div>`));
+
+  const tb = el.querySelector('#hrows');
+  if (tb) {
+    for (const r of sorted) {
+      const outcome = r.outcome === 'abandoned' ? '<span class="pill">unfinished</span>'
+        : r.failedAt ? `<span class="pill red">lost the ${esc(r.failedAt)}</span>`
+        : `<span class="pill ${(r.score || 0) > 400 ? 'green' : ''}">${esc(r.tier || '—')}</span>`;
+      const tr = h(`<tr>
+        <td class="small dim">${esc(sinceLabel(r.at))}</td>
+        <td>${esc(r.name || 'Unnamed')}${r.party ? ` <span class="pill">${esc(PARTIES[r.party].abbr || r.party)}</span>` : ''}
+          ${r.daily ? `<span class="pill ${r.practice ? '' : 'gold'}">${r.practice ? 'practice' : 'daily'}</span>` : ''}</td>
+        <td>${outcome}${r.war ? ' <span class="pill">war</span>' : ''}</td>
+        <td class="num">${r.kept || 0}</td>
+        <td class="num">${r.laws || 0}</td>
+        <td class="num">${r.score === null || r.score === undefined ? '—' : r.score}</td>
+        <td class="num mono small">${r.seed}</td></tr>`);
+      tr.onclick = () => openRunFile(r);
+      tb.appendChild(tr);
+    }
+  }
+  el.querySelectorAll('.sortb').forEach(b => b.onclick = () => {
+    if (G.histSort === b.dataset.s) G.histDir = (G.histDir || -1) * -1;
+    else { G.histSort = b.dataset.s; G.histDir = -1; }
+    render();
+  });
+  el.querySelector('#back').onclick = () => { G.screen = 'title'; render(); };
+  const wipe = el.querySelector('#wipe');
+  if (wipe) wipe.onclick = async () => {
+    const i = await showModal({ kicker: 'Past Runs', title: 'Clear the History?',
+      text: 'Every recorded run is deleted. Saves and settings are untouched.',
+      choices: [{ label: 'Clear it' }, { label: 'Keep it' }] });
+    if (i === 0) { historyClear(); render(); }
+  };
+}
+
+function openRunFile(r) {
+  const card = runCard(r);
+  const sheet = showSheet(r.name || 'A run', r.daily ? 'Daily · ' + r.daily : 'Seed ' + r.seed, `
+    <div class="imp-list">
+      ${r.tier ? `<div class="drow"><span class="dk">Legacy</span><span class="mono">${esc(r.tier)}${r.score === null ? '' : ' · ' + r.score}</span></div>` : ''}
+      ${r.failedAt ? `<div class="drow"><span class="dk">Ended</span><span class="mono r">lost the ${esc(r.failedAt)}</span></div>` : ''}
+      <div class="drow"><span class="dk">Promises kept</span><span class="mono">${r.kept || 0} of ${(r.kept || 0) + (r.broken || 0) || 3}</span></div>
+      <div class="drow"><span class="dk">Signed into law</span><span class="mono">${r.laws || 0}</span></div>
+      ${r.war ? `<div class="drow"><span class="dk">The war</span><span class="mono">${esc(r.war === 'unresolved' ? 'unfinished' : WAR_ENDINGS[r.war].title)}</span></div>` : ''}
+      <div class="drow"><span class="dk">Difficulty</span><span class="mono">${esc(r.difficulty || 'standard')}</span></div>
+    </div>
+    ${r.promises && r.promises.length ? `<div class="tiny muted" style="margin-top:12px">Signature issues</div>
+      <div class="imp-list">${r.promises.map(p =>
+        `<div class="drow"><span class="dk">${esc(p.issue)}</span><span class="mono ${p.fate === 'kept' ? 'g' : 'r'}">${esc(p.fate)}</span></div>`).join('')}</div>` : ''}
+    <p style="margin-top:14px">${esc(r.epitaph || '')}</p>
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn primary" id="rf-replay">Run This Seed Again</button>
+      <button class="btn ghost" id="rf-copy">Copy Run Card</button>
+    </div>`);
+  sheet.querySelector('#rf-copy').onclick = e => copyText(card, e.target, 'Copied');
+  sheet.querySelector('#rf-replay').onclick = () => {
+    document.body.removeChild(sheet);
+    beginNewCandidacy();
+    const inp = document.querySelector('#seed');
+    if (inp) inp.value = String(r.seed);
+  };
 }
 
 /* ==========================================================================
@@ -432,6 +753,10 @@ function renderTopbar() {
    1. TITLE
    ========================================================================== */
 function scrTitle(el) {
+  const store = storageOK();
+  const saved = store ? loadRun() : null;
+  const hist = store ? historyAll() : [];
+
   // The country, drifting, behind the title — the same tile grid the desk
   // calls states on, at a seventh of the opacity and no longer carrying data.
   let i = 0;
@@ -453,9 +778,23 @@ function scrTitle(el) {
           trade — a plank for a primary, a province for a general, a provision for a
           vote — and whether what survives the Senate is still worth having signed.
         </div>
-        <div class="btn-row" style="justify-content:center;margin-top:30px">
-          <button class="btn primary" id="start">Announce Your Candidacy</button>
+        <div class="btn-row" style="justify-content:center;margin-top:30px;flex-wrap:wrap">
+          ${saved ? `<button class="btn primary" id="resume">Continue</button>
+            <button class="btn ghost" id="start">New Candidacy</button>`
+            : `<button class="btn primary" id="start">Announce Your Candidacy</button>`}
         </div>
+        ${saved ? `<div class="resume-line">${esc(saved.label || 'A run in progress')}
+          <span class="rl-when">${esc(sinceLabel(saved.at))}</span>
+          ${saved.daily ? `<span class="pill gold">daily · ${esc(saved.daily)}</span>` : ''}
+          ${saved.version !== GAME_VERSION ? `<span class="pill">saved on v${esc(saved.version || '?')}</span>` : ''}
+        </div>` : ''}
+        ${store ? `<div class="btn-row" style="justify-content:center;margin-top:12px;flex-wrap:wrap">
+          <button class="btn sm" id="daily">Today's Seed</button>
+          <button class="btn sm" id="history">Past Runs${hist.length ? ` (${hist.length})` : ''}</button>
+          <button class="btn sm" id="importrun">Paste a Run</button>
+        </div>` : `<div class="muted tiny" style="margin-top:14px">
+          This browser will not let the game store anything, so runs cannot be saved or
+          continued here. Everything else works.</div>`}
         <div class="patch" id="patch">
           <div class="patch-head">
             <span class="pk">Patch notes</span>
@@ -471,7 +810,15 @@ function scrTitle(el) {
         </div>
       </div>
     </div>`));
-  el.querySelector('#start').onclick = () => { G.screen = 'setup'; render(); };
+  el.querySelector('#start').onclick = () => beginNewCandidacy();
+  const rs = el.querySelector('#resume');
+  if (rs) rs.onclick = () => resumeSavedRun(saved);
+  const dy = el.querySelector('#daily');
+  if (dy) dy.onclick = () => startDaily();
+  const hy = el.querySelector('#history');
+  if (hy) hy.onclick = () => { G.screen = 'history'; render(); };
+  const im = el.querySelector('#importrun');
+  if (im) im.onclick = () => promptImport();
 
   /* The newest release is open, everything before it is a row you can push.
      Kept small on purpose: it is a footnote on the title screen, not a
@@ -526,7 +873,10 @@ function scrSetup(el) {
             <div class="field"><label>Before Politics <span class="muted">(choose two)</span></label>
               <div class="bio-grid" id="bios"></div></div>
             <div class="field"><label>Random Seed <span class="muted">(same seed, same world)</span></label>
-              <input type="text" id="seed" value="${G.seed || ''}" placeholder="leave blank for random"></div>
+              <input type="text" id="seed" value="${_pendingDaily ? esc(_pendingDaily) : (G.seed || '')}"
+                placeholder="leave blank for random"${_pendingDaily ? ' readonly' : ''}></div>
+              ${_pendingDaily ? `<div class="daily-note">Today's seed — <b>${esc(_pendingDaily)}</b>.
+                Everyone playing the daily gets this country. The candidate is still yours.</div>` : ''}</div>
           </div>
           <div>
             <div class="field"><label>Background</label>
@@ -611,9 +961,13 @@ function scrSetup(el) {
   el.querySelector('#back').onclick = () => { G.screen = 'title'; render(); };
   el.querySelector('#next').onclick = () => {
     const seedIn = el.querySelector('#seed').value.trim();
+    const daily = _pendingDaily;
     // The candidate's choices are one entry rather than six, because nothing
     // reads them until the run starts and the log is easier to read this way.
-    primeRun({ seed: seedIn ? hashSeed(seedIn) : freshSeed() });
+    primeRun({
+      seed: daily ? dailySeed(daily) : (seedIn ? hashSeed(seedIn) : freshSeed()),
+      daily: daily
+    });
     record({ t: 'setup', s: { party: _setup.party, bg: _setup.bg, name: _setup.name,
       age: _setup.age, home: _setup.home, bio: _setup.bio.slice() } });
   };
@@ -3454,6 +3808,15 @@ async function bringToFloor() {
 function scrFinal(el) {
   const g = G.gov, p = G.player;
   const s = finalScore(g);
+  /* The run is over: record it and release the in-progress slot. Guarded
+     because the screen redraws, and skipped entirely while replaying, so
+     resuming a finished run files it exactly once. */
+  if (!G.archived) {
+    G.archived = true;
+    G.summary = runSummary('finished');
+    archiveRun('finished');
+    clearRun();
+  }
   const tier = legacyTier(s.total);
   const failed = g.failedAt;
 
@@ -3508,8 +3871,10 @@ function scrFinal(el) {
         </div>
       </div>
     </div>
-    <div class="btn-row" style="justify-content:center;margin:22px 0">
+    <div class="btn-row" style="justify-content:center;margin:22px 0;flex-wrap:wrap">
       <button class="btn primary" id="again">Run Again</button>
+      <button class="btn ghost" id="card">Copy Run Card</button>
+      <button class="btn ghost" id="exportbtn">Copy Run Code</button>
       <button class="btn ghost" id="seedbtn">Seed: ${G.seed}</button>
     </div>
     <div class="footer-note">Mandate · a game about the distance between a platform and a signing ceremony</div>
@@ -3583,6 +3948,15 @@ function scrFinal(el) {
     : '<span class="muted">Nothing was signed.</span>';
 
   el.querySelector('#again').onclick = () => restartGame();
+  el.querySelector('#card').onclick = e =>
+    copyText(runCard(G.summary || runSummary('finished')), e.target, 'Copied — paste it anywhere');
+  el.querySelector('#exportbtn').onclick = e => {
+    // The code carries the decisions, so whoever pastes it gets this exact run
+    // rather than merely this country.
+    copyText(exportRun(makeSave({ version: GAME_VERSION, seed: G.seed, mode: RUN.mode,
+      difficulty: RUN.difficulty, daily: RUN.daily, log: RUN.log, at: RUN.startedAt,
+      label: runLabel() })), e.target, 'Copied');
+  };
   el.querySelector('#seedbtn').onclick = () => {
     navigator.clipboard && navigator.clipboard.writeText(String(G.seed));
     el.querySelector('#seedbtn').textContent = 'Seed copied: ' + G.seed;
