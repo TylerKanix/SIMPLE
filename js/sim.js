@@ -6,6 +6,16 @@
 /* ---- seeded RNG so a run can be reproduced and argued about --------------- */
 let _seed = 123456789;
 function setSeed(s) { _seed = (s >>> 0) || 1; }
+
+/* The one legitimate use of the platform RNG in the whole game.
+ *
+ * Everything downstream of a seed is drawn from the xorshift stream above, so
+ * that a seed plus the same choices reproduces a run exactly. The seed itself
+ * cannot come from that stream — it is what starts it — so an unseeded run
+ * picks its starting point from Math.random here and nowhere else. The test
+ * suite greps for Math.random and permits it only inside this function; if you
+ * need randomness anywhere else, you want rnd(). */
+function freshSeed() { return Math.floor(Math.random() * 2 ** 31); }
 function rnd() {
   // xorshift32
   _seed ^= _seed << 13; _seed >>>= 0;

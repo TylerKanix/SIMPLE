@@ -288,7 +288,7 @@ function scrSetup(el) {
   el.querySelector('#back').onclick = () => { G.screen = 'title'; render(); };
   el.querySelector('#next').onclick = () => {
     const seedIn = el.querySelector('#seed').value.trim();
-    G.seed = seedIn ? hashSeed(seedIn) : Math.floor(Math.random() * 2 ** 31);
+    G.seed = seedIn ? hashSeed(seedIn) : freshSeed();
     setSeed(G.seed);
     applyCycleDrift();
     startCampaign();
@@ -3273,7 +3273,7 @@ function renderLog(el) {
 
 /* ---- boot ---------------------------------------------------------------- */
 function boot() {
-  setSeed(Math.floor(Math.random() * 2 ** 31));
+  setSeed(freshSeed());
   calibrateStates();
   render();
 }
