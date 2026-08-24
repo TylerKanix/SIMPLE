@@ -257,6 +257,37 @@ largest single thing available to a presidency. It is also three years in which
 you were doing that instead of the thing you were elected to do, and the final
 accounting reports both.
 
+### Events that have read your record
+
+The generic pools ask what happens to a president. A second class of event asks
+what happens to *this* one, keyed off facts derived from the run rather than
+stored anywhere: the signature promise you broke, cut into an ad from your own
+podium footage; the state you carried by four tenths of a point, whose
+delegation now wants something indefensible everywhere else; the deficit you
+actually ran, which has one conversation at seven hundred billion over and a
+different one at sixteen hundred; the biography you picked in act zero; a
+plank you took against your own party, raised once somebody has to write the
+rule. The war aftermath only exists in the one run in ten that had a war.
+
+### The opposition has a temperament
+
+Disciplined, erratic, attack dog, or base mobilizer, drawn for every rival and
+for the general-election nominee. They are multipliers on behaviour the engine
+already has — spending rate and the variance accepted for it, willingness to
+reposition, and how much of the campaign is spent on you rather than on
+themselves — so a temperament leans on what exists and cannot invent anything.
+
+The bar is that they are tellable apart without being told, and the first
+version failed it: scaling the optimizer's rounds did nothing, because a greedy
+search converges and then stops, so every temperament reached the same
+platform. Two things fix it. A move has to clear a threshold that scales
+inversely with willingness to reposition, so a mobilizer wants a great deal
+before stepping toward a middle it does not believe in. And the noise now sits
+between what a move is worth and what the campaign *believes* it is worth: they
+rank on the belief and are judged on the truth. Measured over twelve seeds, a
+disciplined campaign moves two planks and gains a third of a point at the
+tipping state; an erratic one moves nearly three and loses a third of a point.
+
 ### Everything else
 
 Deficits accumulate and fiscal hawks price them in. Executive orders give you
