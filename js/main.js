@@ -2672,6 +2672,7 @@ function beginGovernment(result) {
     capital: 0,
     econ: G.env.econ * 0.5,
     deficit: 1100 + Math.max(0, platformCost(p.platform)) * 0.2,
+    deficit0: 1100 + Math.max(0, platformCost(p.platform)) * 0.2,   // what you inherited, for comparison
     baseMorale: p.baseMorale,
     bipartisan: 10,
     oppEnergy: 12,
@@ -2702,6 +2703,7 @@ function beginGovernment(result) {
     term: 1,
     situations: [],        // live crises eating this quarter's weeks
     seenSituations: [],
+    seenRecord: [],        // record-aware events already fired, one run each
     war: null,             // the theatre, once there is one
     warAt: null,           // the quarter the cable arrives, decided now and fixed
     warOver: null
@@ -3420,6 +3422,28 @@ function applyGovEffect(e, soften) {
 
 async function governingEvent() {
   const g = G.gov, p = G.player;
+
+  /* Both draws happen whatever route is taken, so the number of numbers pulled
+     from the stream for one event never depends on which branch fires. The
+     branch itself is deterministic — it reads the record, and the record is a
+     function of the player's decisions — but a fixed draw count is cheap
+     insurance for a property the whole game rests on. */
+  const rWhich = rnd(), rPick = rnd();
+
+  const live = liveRecordEvents(g, p, g.seenRecord || (g.seenRecord = []));
+  if (live.length && rWhich < 0.55) {
+    const chosen = live[Math.min(live.length - 1, Math.floor(rPick * live.length))];
+    g.seenRecord.push(chosen.def.id);
+    const built = chosen.def.build(chosen.facts);
+    const i = await choose('record:' + chosen.def.id, {
+      kicker: `Quarter ${g.quarter} · your record`, title: built.title, text: esc(built.text),
+      choices: built.choices.map(c => ({ label: c.label, tags: effectTags(effectSummary(c.eff, 'gov')) }))
+    });
+    applyGovEffect(built.choices[i].eff);
+    logMsg(`${built.title} — "${built.choices[i].label}"`, '', `Q${g.quarter}`);
+    return;
+  }
+
   const ev = pick(GOVERNING_EVENTS);
   const caucusName = pick(CAUCUSES.filter(c => c.party === g.playerParty)).name;
   const text = ev.text

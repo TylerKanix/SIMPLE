@@ -70,6 +70,41 @@ audit('situations', S.SITUATIONS, GOV_APPLIED,
 audit('war escalations', S.WAR_ESCALATIONS, GOV_APPLIED,
   e => [['eff', e.eff]]);
 
+/* Record-aware events build their text from the run, so they are audited by
+   building them against a fact set that makes every one of them fire. */
+{
+  const facts = {
+    sig: [{ id: 'health', short: 'Health', name: 'Health Care', promised: -2, label: 'Single Payer', enacted: -0.2, status: 'broken' }],
+    broken: { id: 'health', short: 'Health', name: 'Health Care', promised: -2, label: 'Single Payer', enacted: -0.2, status: 'broken' },
+    kept: { id: 'taxes', short: 'Taxes', name: 'Taxes', promised: -1, label: 'Raise Top Rates', enacted: -1, status: 'kept' },
+    open: null,
+    narrow: { abbr: 'PA', name: 'Pennsylvania', margin: 0.004, ev: 19 },
+    lostNarrow: { abbr: 'NC', name: 'North Carolina', margin: -0.006, ev: 16 },
+    deficit: 3400, deficitDelta: 2000,
+    heterodox: { id: 'trade', short: 'Trade', name: 'Trade', promised: 1, label: 'Tariffs', status: 'open' },
+    background: { id: 'gov', name: 'Governor' },
+    term: 2, quarter: 27, laws: 6, approval: 47,
+    war: { casualties: 17.4, terms: { id: 'favourable' } }, warOver: 'favourable'
+  };
+  const built = [];
+  for (const e of S.RECORD_EVENTS) {
+    check(`record event ${e.id} fires against a full record`, e.when(facts) === true || !!e.when(facts));
+    let b = null;
+    try { b = e.build(facts); } catch (err) { check(`record event ${e.id} builds`, false, err.message); continue; }
+    check(`record event ${e.id} builds a playable event`,
+      !!(b && b.title && b.text && b.choices && b.choices.length >= 2
+         && b.choices.every(c => c.label && c.eff && Object.keys(c.eff).length)),
+      JSON.stringify(b && b.title));
+    built.push({ id: e.id, choices: b.choices, title: b.title, text: b.text });
+  }
+  audit('record events', built, GOV_APPLIED, e => e.choices.map((c, i) => ['choice' + i, c.eff]));
+  const shouty2 = built.filter(b => [b.title, b.text].concat(b.choices.map(c => c.label)).join(' ').indexOf('!') >= 0);
+  check('record events do not shout', shouty2.length === 0, shouty2.map(b => b.id).join(', '));
+  const ids = S.RECORD_EVENTS.map(e => e.id);
+  check('record event ids are unique', new Set(ids).size === ids.length);
+  check(`record pool covers the eight required patterns (${S.RECORD_EVENTS.length})`, S.RECORD_EVENTS.length >= 8);
+}
+
 /* Shape checks: content that cannot be played is worse than content that is
    merely unbalanced, and both are cheap to catch here. */
 function shape(label, items, fn) {

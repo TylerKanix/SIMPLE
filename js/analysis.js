@@ -607,3 +607,82 @@ function warPosture(w) {
   if (losing >= 3) return 'You are behind the line you inherited on most of the theatre.';
   return 'The theatre is roughly where it was when the cable arrived.';
 }
+
+/* ==========================================================================
+   THE RECORD
+   What this particular run has actually done, in a form content can key off.
+
+   The generic event pools ask "what happens to a president"; these facts let a
+   second class of event ask "what happens to *this* president" — the promise
+   you broke, the state you carried by four hundred votes, the deficit you
+   actually ran. Everything here is derived, never stored, so it cannot drift
+   away from the run it describes.
+   ========================================================================== */
+function recordFacts(g, p) {
+  const sig = (g.platform ? g.platform.signature : []).map(id => {
+    const iss = ISSUES.find(x => x.id === id);
+    const promised = g.platform.positions[id];
+    const enacted = g.enacted[id];
+    const stance = STANCES[id] ? STANCES[id].find(x => x.p === promised) : null;
+    return {
+      id: id,
+      short: iss ? iss.short : id,
+      name: iss ? iss.name : id,
+      promised: promised,
+      label: stance ? stance.label : '',
+      enacted: enacted,
+      status: enacted === undefined ? 'open'
+        : (Math.abs(enacted - promised) <= 0.7 ? 'kept' : 'broken')
+    };
+  });
+
+  /* The map you were actually elected on. The narrowest state you carried is
+     the one whose voters can most credibly threaten to take it back. */
+  let narrow = null, lostNarrow = null;
+  const states = (g.result && g.result.states) || [];
+  for (const st of states) {
+    if (st.margin > 0) { if (!narrow || st.margin < narrow.margin) narrow = st; }
+    else if (!lostNarrow || st.margin > lostNarrow.margin) lostNarrow = st;
+  }
+
+  /* A position you took against your own party's default is a choice rather
+     than an inheritance, and it is the one worth quoting back at you. */
+  const dir = PARTIES[g.playerParty] ? PARTIES[g.playerParty].dir : -1;
+  const partyLine = dir < 0 ? -1 : 1;
+  const heterodox = sig.filter(x => (x.promised - partyLine) * dir < -0.5)
+    .concat(ISSUE_IDS.filter(id => (g.platform.positions[id] - partyLine) * dir < -1.5)
+      .map(id => {
+        const iss = ISSUES.find(x => x.id === id);
+        const stance = STANCES[id].find(x => x.p === g.platform.positions[id]);
+        return { id, short: iss ? iss.short : id, name: iss ? iss.name : id,
+          promised: g.platform.positions[id], label: stance ? stance.label : '', status: 'open' };
+      }))[0] || null;
+
+  const d0 = g.deficit0 === undefined ? 1200 : g.deficit0;
+  return {
+    sig: sig,
+    broken: sig.find(x => x.status === 'broken') || null,
+    kept: sig.find(x => x.status === 'kept') || null,
+    open: sig.find(x => x.status === 'open') || null,
+    narrow: narrow,
+    lostNarrow: lostNarrow,
+    deficit: g.deficit,
+    deficitDelta: g.deficit - d0,
+    heterodox: heterodox,
+    background: p && p.background ? p.background : null,
+    term: g.term || 1,
+    quarter: g.quarter,
+    laws: g.laws ? g.laws.length : 0,
+    approval: g.approval,
+    war: g.war || null,
+    warOver: g.warOver || null
+  };
+}
+
+/* Which record-aware events are live right now, in a fixed order. The order is
+   the order they are declared, so the draw that picks one is reproducible. */
+function liveRecordEvents(g, p, seen) {
+  const f = recordFacts(g, p);
+  return RECORD_EVENTS.filter(e => seen.indexOf(e.id) < 0 && e.when(f))
+    .map(e => ({ def: e, facts: f }));
+}

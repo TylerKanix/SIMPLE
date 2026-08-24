@@ -992,6 +992,187 @@ const GOVERNING_EVENTS = [
     ] }
 ];
 
+/* ==========================================================================
+   EVENTS THAT HAVE READ YOUR RECORD
+
+   The pools above ask what happens to a president. These ask what happens to
+   *this* president: the promise you broke, the state you carried by four
+   hundred votes, the deficit you actually ran, the biography you chose in an
+   afternoon four acts ago.
+
+   `when` is handed the facts derived in analysis.js and decides whether the
+   event has anything to say yet. `build` writes it. Each fires once per run,
+   and the whole list is scanned in declaration order so that the draw which
+   picks one is reproducible from the seed like everything else.
+   ========================================================================== */
+const RECORD_EVENTS = [
+
+  /* --- a signature promise, broken -------------------------------------- */
+  { id: 'rBrokenAd', scope: 'gov',
+    when: f => !!f.broken,
+    build: f => ({
+      title: 'They Have Cut an Ad Out of Your Own Words',
+      text: `Thirty seconds: you, at a podium, promising ${f.broken.label.toLowerCase()} on ${f.broken.name.toLowerCase()}, `
+        + `and then the number you actually signed. It is accurate, which is the problem. It is running in the states you carried narrowly.`,
+      choices: [
+        { label: 'Defend the compromise on the merits', eff: { approval: -2, capital: -4, bipartisan: 3 } },
+        { label: 'Promise to come back to it in the second half', eff: { base: 4, coherence: -2, capital: -6 } },
+        { label: 'Say nothing and let the record speak', eff: { approval: -4, base: -6, oppEnergy: 5 } }
+      ]
+    }) },
+
+  { id: 'rBrokenFlank', scope: 'gov',
+    when: f => !!f.broken && f.quarter >= 6,
+    build: f => ({
+      title: 'Your Own Flank Has Found a Candidate',
+      text: `A member of your own party has begun saying, in public and by name, that ${f.broken.name.toLowerCase()} `
+        + `is the promise you were elected on and did not keep. They are not wrong, and their fundraising has tripled.`,
+      choices: [
+        { label: 'Reopen the issue with a second bill you may lose', eff: { base: 9, capital: -14, oppEnergy: 4 } },
+        { label: 'Buy them off with an appointment', eff: { base: 2, capital: -8, loyalty: 2, coherence: -1 } },
+        { label: 'Let them run and beat them', eff: { base: -8, capital: 4, oppEnergy: 7 } }
+      ]
+    }) },
+
+  /* --- a promise kept, and what a victory lap costs ---------------------- */
+  { id: 'rKeptLap', scope: 'gov',
+    when: f => !!f.kept,
+    build: f => ({
+      title: 'The Anniversary of Something That Worked',
+      text: `A year on, the ${f.kept.name.toLowerCase()} law is doing roughly what you said it would. `
+        + `Your communications shop wants a week of travel built around it. A week is a week.`,
+      choices: [
+        { label: 'Take the week and sell it', eff: { approval: 5, base: 4, capital: -6 } },
+        { label: 'Send the cabinet and keep the week', eff: { approval: 2, capital: 2 } },
+        { label: 'Use the moment to demand the next thing', eff: { approval: 1, base: 7, capital: -10, oppEnergy: 5 } }
+      ]
+    }) },
+
+  /* --- the state that elected you --------------------------------------- */
+  { id: 'rNarrowState', scope: 'gov',
+    when: f => !!f.narrow && f.narrow.margin < 0.03,
+    build: f => ({
+      title: `${f.narrow.name} Is Asking for Something`,
+      text: `You carried ${f.narrow.name} by ${(Math.abs(f.narrow.margin) * 100).toFixed(1)} points — the narrowest state on your map — `
+        + `and its delegation wants a carve-out that is indefensible everywhere else and decisive there.`,
+      choices: [
+        { label: 'Give it to them', eff: { approval: -2, capital: -5, loyalty: 3, coherence: -2 } },
+        { label: 'Refuse, and explain why in the state', eff: { approval: 1, loyalty: -3, coherence: 3 } },
+        { label: 'Trade it for their votes on the next bill', eff: { capital: 8, loyalty: 2, base: -3 } }
+      ]
+    }) },
+
+  /* --- the deficit you actually ran, with thresholds --------------------- */
+  { id: 'rDeficitHawks', scope: 'gov',
+    when: f => f.deficitDelta > 700,
+    build: f => ({
+      title: 'The Auction Goes Badly',
+      text: `A ten-year auction comes in soft and the yield moves enough to be a headline. `
+        + `You have added ${Math.round(f.deficitDelta)} billion to the deficit since January, and for the first time somebody `
+        + `who is not a partisan is asking about it on television.`,
+      choices: [
+        { label: 'Announce a credible medium-term path', eff: { econ: 0.4, base: -8, capital: -10, bipartisan: 6 } },
+        { label: 'Point out that the debt is cheap and the need is now', eff: { base: 6, econ: -0.4, oppEnergy: 6 } },
+        { label: 'Order a spending review that finds nothing', eff: { approval: 1, coherence: -2, capital: -3 } }
+      ]
+    }) },
+
+  { id: 'rDeficitHawksHard', scope: 'gov',
+    when: f => f.deficitDelta > 1600,
+    build: f => ({
+      title: 'A Ratings Agency Puts You on Watch',
+      text: `Not a downgrade. A sentence in a report saying one may be coming, which does the same work. `
+        + `The deficit is ${Math.round(f.deficitDelta)} billion above what you inherited and your own fiscal people have stopped defending the trajectory.`,
+      choices: [
+        { label: 'Cut something you care about, publicly', eff: { econ: 0.6, base: -14, bipartisan: 8, deficit: -260 } },
+        { label: 'Raise the revenue instead', eff: { econ: -0.2, base: 6, oppEnergy: 9, deficit: -220 } },
+        { label: 'Dismiss the agency and carry on', eff: { econ: -0.7, approval: -4, base: 3 } }
+      ]
+    }) },
+
+  /* --- act 0, four acts later ------------------------------------------- */
+  { id: 'rBackground', scope: 'gov',
+    when: f => !!f.background,
+    build: f => ({
+      title: 'The Thing You Used to Be',
+      text: `A long profile is being written about your years ${f.background.name.toLowerCase().indexOf('governor') >= 0 ? 'in the statehouse' : 'before politics'}, `
+        + `built on interviews with people who worked for you then. The reporter is fair and has found the decision you would rather explain than defend.`,
+      choices: [
+        { label: 'Sit for it and answer everything', eff: { approval: 2, base: -2, coherence: 3 } },
+        { label: 'Decline and let them run it thin', eff: { approval: -3, oppEnergy: 4 } },
+        { label: 'Have allies from that period do the talking', eff: { approval: 1, loyalty: -2, capital: -4 } }
+      ]
+    }) },
+
+  /* --- a position you took against type, quoted back -------------------- */
+  { id: 'rHeterodox', scope: 'gov',
+    when: f => !!f.heterodox,
+    build: f => ({
+      title: 'A Question You Have Been Asked Before',
+      text: `At a briefing, a reporter reads your own platform back to you: ${f.heterodox.label.toLowerCase()} on ${f.heterodox.name.toLowerCase()}. `
+        + `Half your caucus never liked it. They want to know whether you still mean it now that you have to write the rule.`,
+      choices: [
+        { label: 'Yes, and write the rule that way', eff: { coherence: 3, base: -5, capital: -8, policyStrength: 0.2 } },
+        { label: 'Say the position has matured', eff: { coherence: -4, capital: 5, loyalty: 3 } },
+        { label: 'Refuse to relitigate the platform', eff: { approval: -2, base: 4 } }
+      ]
+    }) },
+
+  /* --- second term only -------------------------------------------------- */
+  { id: 'rLameDuck', scope: 'gov',
+    when: f => f.term === 2 && f.quarter >= 22,
+    build: f => ({
+      title: 'They Have Started Ignoring You',
+      text: `A bill you endorsed by name went to the floor without the provision you asked for, and nobody called first. `
+        + `There is no election left in which you can punish anyone, and everybody has done that arithmetic.`,
+      choices: [
+        { label: 'Veto it and make the point once', eff: { capital: -12, loyalty: 5, approval: -3, oppEnergy: 4 } },
+        { label: 'Sign it and take the win you can get', eff: { approval: 2, loyalty: -4, coherence: -2 } },
+        { label: 'Spend the quarter campaigning for your successor', eff: { loyalty: 6, capital: -8, approval: 1 } }
+      ]
+    }) },
+
+  { id: 'rLibrary', scope: 'gov',
+    when: f => f.term === 2 && f.quarter >= 26,
+    build: f => ({
+      title: 'They Want to Talk About the Library',
+      text: 'A foundation is being assembled and its board would like to know which parts of the record the building should be about. '
+        + `You have signed ${f.laws} things. They have opinions about which ones.`,
+      choices: [
+        { label: 'Insist it is about the hard one', eff: { base: 6, capital: -4 } },
+        { label: 'Let them build the popular one', eff: { approval: 3, base: -4 } },
+        { label: 'Refuse to think about it while in office', eff: { capital: 5, loyalty: -2 } }
+      ]
+    }) },
+
+  /* --- after the war ------------------------------------------------------ */
+  { id: 'rWarVets', scope: 'gov',
+    when: f => !!f.warOver,
+    build: f => ({
+      title: 'The Ones Who Came Back',
+      text: `${f.war ? f.war.casualties.toFixed(1) : '0'} thousand American casualties, and a veterans system that was `
+        + 'built for a smaller war. The waiting lists are the story now, and they will be the story for twenty years.',
+      choices: [
+        { label: 'Fund it properly, whatever it costs', eff: { approval: 5, deficit: 240, base: 5, capital: -10 } },
+        { label: 'Reform the agency before adding money to it', eff: { approval: -1, capital: -8, policyStrength: 0.2 } },
+        { label: 'Announce a commission', eff: { approval: -4, oppEnergy: 6, capital: -2 } }
+      ]
+    }) },
+
+  { id: 'rWarAccount', scope: 'gov',
+    when: f => !!f.warOver && f.quarter >= 14,
+    build: f => ({
+      title: 'The Accounting',
+      text: `A select committee wants the decision memos from the theatre — every order, and who signed it. `
+        + `The war ${f.warOver === 'victory' || f.warOver === 'favourable' ? 'ended on your terms, which does not make the memos read better' : 'did not end on your terms, and the memos will be read in that light'}.`,
+      choices: [
+        { label: 'Hand over everything', eff: { approval: 2, bipartisan: 6, base: -3, oppEnergy: -4 } },
+        { label: 'Assert privilege over the deliberative ones', eff: { courtRisk: 1, oppEnergy: 8, base: 3 } },
+        { label: 'Testify yourself', eff: { approval: 4, capital: -12, coherence: 3 } }
+      ]
+    }) }
+];
+
 const DEPTS = ['Housing', 'Transportation', 'Veterans Affairs', 'Interior', 'Commerce', 'Labor', 'Energy'];
 
 /* ==========================================================================
