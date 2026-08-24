@@ -725,6 +725,115 @@ const CAMPAIGN_EVENTS = [
       { label: 'Run the attack', eff: { momentum: 4, negatives: 3 } },
       { label: 'Play it safe and stay on message', eff: { momentum: 1, discipline: 3 } },
       { label: 'Go off-script and be honest about a hard trade-off', eff: { momentum: 2, authenticity: 6, base: -3 } }
+    ] },
+
+  /* ---- added in 1.10 ---------------------------------------------------
+     The pool used to run dry before the convention. These are the same shape
+     and the same register: no option is free, and none of them is the obvious
+     one. */
+
+  { id: 'busdriver', title: 'The Bus Driver Question',
+    text: 'A local reporter with no national profile asks what a gallon of milk costs. You do not know. The clip is nineteen seconds long and it is going to travel.',
+    choices: [
+      { label: 'Admit you do not know and say why that is fair to ask', eff: { authenticity: 6, momentum: -2, media: 2 } },
+      { label: 'Guess, confidently', eff: { momentum: -4, negatives: 3, coherence: -1 } },
+      { label: 'Turn it into a riff about who sets the price', eff: { base: 5, suburb: -3, momentum: 1 } }
+    ] },
+
+  { id: 'donorroom', title: 'A Room in Palo Alto',
+    text: 'Forty people who can each write the maximum, in a house with a view. They want two hours and an answer on {ISSUE} that they can repeat to their friends.',
+    choices: [
+      { label: 'Give them the answer they want', eff: { money: 40, base: -6, leak: 0.25 } },
+      { label: 'Give them the answer you gave in Ohio', eff: { money: 12, authenticity: 4 } },
+      { label: 'Skip it and do two more county fairs', eff: { money: -5, momentum: 2, base: 4 } }
+    ] },
+
+  { id: 'unionhall', title: 'The Hall Is Split',
+    text: 'The international endorsed you. The locals in three states did not, and their president is standing at the back of the room with his arms folded.',
+    choices: [
+      { label: 'Take the questions until they stop', eff: { base: 7, momentum: -1, authenticity: 3 } },
+      { label: 'Stick to the speech and leave on schedule', eff: { discipline: 3, base: -4 } },
+      { label: 'Promise them the plank they want on trade', eff: { base: 9, coherence: -3, suburb: -4 } }
+    ] },
+
+  { id: 'ownflank', title: 'A Primary From Your Own Flank',
+    text: 'An activist with four hundred thousand followers and no organisation is threatening to run at you from where your base already is. Nobody thinks they can win. Everybody thinks they can cost you six weeks.',
+    choices: [
+      { label: 'Meet them privately and give them something real', eff: { base: 6, coherence: -2, debt: 1 } },
+      { label: 'Ignore it entirely', eff: { momentum: -2, base: -5 } },
+      { label: 'Dare them publicly', eff: { momentum: 3, base: -8, media: 3, negatives: 2 } }
+    ] },
+
+  { id: 'debateprep', title: 'Two Days of Debate Prep',
+    text: 'Your team wants both days in a hotel ballroom with a stand-in playing your opponent. Your schedulers want you in Michigan. You cannot do both.',
+    choices: [
+      { label: 'Take the prep', eff: { discipline: 6, momentum: -2 } },
+      { label: 'Take Michigan', eff: { momentum: 4, discipline: -4 } },
+      { label: 'One day of each and no sleep', eff: { discipline: 2, momentum: 1, negatives: 2 } }
+    ] },
+
+  { id: 'oppodrop', title: 'Something on the Other One',
+    text: 'A researcher brings you a document about a rival that is true, twelve years old, and about their family rather than their record.',
+    choices: [
+      { label: 'Use it', eff: { momentum: 6, negatives: 8, authenticity: -5 } },
+      { label: 'Leak it and keep your prints off it', eff: { momentum: 4, negatives: 3, leak: 0.35 } },
+      { label: 'Burn it and tell the room why', eff: { authenticity: 7, momentum: -1, media: 2 } }
+    ] },
+
+  { id: 'thirdrail', title: 'The Third Rail, On Camera',
+    text: 'A town-hall questioner asks the entitlements question directly. Everyone on your staff has a different opinion about whether the honest answer is survivable.',
+    choices: [
+      { label: 'Answer it honestly and take the week', eff: { authenticity: 8, momentum: -5, media: 4 } },
+      { label: 'Give the answer that commits to nothing', eff: { coherence: -2, momentum: 1 } },
+      { label: 'Attack the premise', eff: { base: 6, suburb: -4, negatives: 2 } }
+    ] },
+
+  { id: 'staffshake', title: 'Your Campaign Manager Has to Go',
+    text: 'The burn rate is indefensible and two states have no organisation at all. Firing them in October is a story; keeping them is a slower story.',
+    choices: [
+      { label: 'Replace them now and eat the coverage', eff: { discipline: 7, momentum: -4, media: -2 } },
+      { label: 'Bring in a deputy and leave the title', eff: { discipline: 3, momentum: -1, money: -8 } },
+      { label: 'Keep them. Loyalty is worth something.', eff: { discipline: -4, base: 3, money: -18 } }
+    ] },
+
+  { id: 'faithforum', title: 'The Faith Forum',
+    text: 'An hour on stage in a megachurch in a state you need, in front of an audience that mostly is not yours, with a moderator who is fair and will not help you.',
+    choices: [
+      { label: 'Go and talk about your own upbringing', eff: { suburb: 5, authenticity: 4, base: -3 } },
+      { label: 'Go and defend your platform line by line', eff: { coherence: 4, suburb: -2, base: 4 } },
+      { label: 'Send a surrogate', eff: { momentum: -2, suburb: -4 } }
+    ] },
+
+  { id: 'lateoct', title: 'The October Ad You Cannot Unsee',
+    text: 'They have cut thirty seconds of you, in your own voice, saying something you did in fact say. It is running in four states and it is working.',
+    choices: [
+      { label: 'Answer it directly, in your own voice', eff: { negatives: -5, momentum: 1, money: -22 } },
+      { label: 'Change the subject with a bigger buy elsewhere', eff: { momentum: 3, negatives: 2, money: -30 } },
+      { label: 'Let it run and hope it saturates', eff: { negatives: 5, money: 0 } }
+    ] },
+
+  { id: 'runningfeud', title: 'Your Running Mate Goes Off Script',
+    text: 'On a rope line, unprompted, they said the quiet part about {ISSUE}. It is not what your platform says and it is not entirely wrong.',
+    choices: [
+      { label: 'Back them fully', eff: { base: 6, coherence: -4, momentum: 1 } },
+      { label: 'Clarify the difference politely', eff: { coherence: 3, base: -3, media: 1 } },
+      { label: 'Have them walk it back themselves', eff: { discipline: 2, momentum: -2, base: -2 } }
+    ] },
+
+  { id: 'weather', title: 'A Storm in the Wrong Week',
+    text: 'Landfall is Thursday in a state you were going to spend Thursday in. Your opponent has already cancelled and posted about it.',
+    choices: [
+      { label: 'Cancel and send the buses with supplies', eff: { media: 4, authenticity: 5, momentum: -2 } },
+      { label: 'Cancel quietly and work the phones', eff: { money: 15, momentum: -1 } },
+      { label: 'Go anyway, to the shelter, with cameras', eff: { momentum: 2, negatives: 4, media: 3 } }
+    ] },
+
+  { id: 'polldrop', title: 'One Bad Poll, Loudly',
+    text: 'A single survey with a strange sample has you six down and it is the only number anybody is talking about. Your own numbers do not show it.',
+    choices: [
+      { label: 'Release your internals', eff: { momentum: 2, leak: 0.2, media: 2 } },
+      { label: 'Say nothing and let the average correct it', eff: { discipline: 4, momentum: -2 } },
+      { label: 'Attack the pollster', eff: { base: 4, media: 3, authenticity: -3 } }
     ] }
 ];
 
@@ -784,6 +893,102 @@ const GOVERNING_EVENTS = [
       { label: 'Go there. Full federal response.', eff: { approval: 6, capital: -6, deficit: 60, bipartisan: 8 } },
       { label: 'Send FEMA, stay in Washington', eff: { approval: -1, deficit: 40 } },
       { label: 'Condition aid on their votes', eff: { approval: -8, capital: 5, coherence: -6 } }
+    ] },
+
+  /* ---- added in 1.10 ---------------------------------------------------
+     Sixteen more, because eight did not survive one term, let alone two. */
+
+
+  { id: 'inspector', title: 'An Inspector General Finds Something',
+    text: 'Not corruption. Sloppiness, in a programme you announced from a podium, with a number in the report that is going to be read aloud at a hearing.',
+    choices: [
+      { label: 'Release it in full the same afternoon', eff: { approval: -3, bipartisan: 5, oppEnergy: -3 } },
+      { label: 'Release it late on a Friday with a rebuttal', eff: { approval: -1, oppEnergy: 4, coherence: -1 } },
+      { label: 'Fire the programme director first', eff: { approval: 1, base: -4, courtRisk: 1 } }
+    ] },
+
+
+  { id: 'chipplant', title: 'A Plant Announcement, Somewhere Specific',
+    text: 'Eleven hundred jobs, announced by a company that would have built it anyway. Your commerce secretary would like you standing in front of it.',
+    choices: [
+      { label: 'Go and take the credit', eff: { approval: 3, econ: 0.2, coherence: -1 } },
+      { label: 'Send the secretary and stay on the agenda', eff: { capital: 3 } },
+      { label: 'Go, and use it to announce the next thing', eff: { approval: 2, capital: -5, econ: 0.3 } }
+    ] },
+
+  { id: 'pardonask', title: 'A Pardon Request With a Name on It',
+    text: 'A sympathetic case, a genuinely excessive sentence, and a family who gave to your campaign. Two of those three are the reason it reached your desk.',
+    choices: [
+      { label: 'Grant it', eff: { base: 4, approval: -3, oppEnergy: 6 } },
+      { label: 'Refuse and commute forty anonymous sentences instead', eff: { base: 6, approval: 1, capital: -4 } },
+      { label: 'Send it back to the pardon attorney', eff: { approval: 1, base: -2 } }
+    ] },
+
+  { id: 'leakwh', title: 'Somebody in the Building Is Talking',
+    text: 'Three stories in a fortnight, each with a detail only a dozen people had. The leak is not damaging. The fact of it is.',
+    choices: [
+      { label: 'Polygraph the dozen', eff: { loyalty: -4, coherence: -2, oppEnergy: 3 } },
+      { label: 'Find them quietly and move them sideways', eff: { capital: -4, loyalty: 2 } },
+      { label: 'Do nothing and out-govern it', eff: { approval: -2, loyalty: 1 } }
+    ] },
+
+  { id: 'stateunion', title: 'The State of the Union',
+    text: 'Seventy minutes and one new proposal. Your policy shop has three; your political shop wants the one that polls at sixty and does nothing.',
+    choices: [
+      { label: 'Announce the hard one', eff: { capital: -8, base: 8, approval: -1, oppEnergy: 5 } },
+      { label: 'Announce the popular one', eff: { approval: 5, base: -5, capital: 3 } },
+      { label: 'Announce nothing and defend the record', eff: { approval: 2, capital: 6, base: -2 } }
+    ] },
+
+  { id: 'ambassador', title: 'An Ally Is Annoyed',
+    text: 'A treaty partner has read your trade posture as directed at them, because in part it is. Their ambassador has asked for a meeting and their press has asked for blood.',
+    choices: [
+      { label: 'Give them a carve-out', eff: { bipartisan: 3, base: -5, econ: 0.2 } },
+      { label: 'Hold the line and absorb the fortnight', eff: { base: 5, hawks: 3, econ: -0.3 } },
+      { label: 'A joint statement that resolves nothing', eff: { coherence: -1, approval: 1 } }
+    ] },
+
+  { id: 'drugprice', title: 'A Price Goes Up Anyway',
+    text: 'The manufacturer raised the list price on the drug you named in a speech, by nine per cent, three weeks after the bill was signed.',
+    choices: [
+      { label: 'Name them from the podium', eff: { approval: 4, base: 6, econ: -0.2 } },
+      { label: 'Direct the agency to write a rule', eff: { capital: -9, policyStrength: 0.3 } },
+      { label: 'Say the law needs time to work', eff: { approval: -3, coherence: 1 } }
+    ] },
+
+  { id: 'campusgas', title: 'Protests on Fourteen Campuses',
+    text: 'Mostly peaceful, occasionally not, about {ISSUE}. Your base is out there. So are the cameras, and so is a governor who would like federal help he has not asked for.',
+    choices: [
+      { label: 'Meet the organisers', eff: { base: 7, approval: -3, oppEnergy: 6 } },
+      { label: 'Defend the right to protest and nothing further', eff: { approval: 1, base: -2 } },
+      { label: 'Emphasise order', eff: { approval: 4, base: -9, oppEnergy: -3 } }
+    ] },
+
+
+
+
+  { id: 'cabinetgone', title: 'A Secretary Resigns Over Policy',
+    text: 'Not a scandal — a disagreement, put in writing, about {ISSUE}, by someone with a reputation for being right.',
+    choices: [
+      { label: 'Accept it and praise them on the way out', eff: { approval: -2, bipartisan: 2 } },
+      { label: 'Talk them out of it by moving your position', eff: { coherence: -3, capital: -6, loyalty: 2 } },
+      { label: 'Let them go and rubbish the letter', eff: { approval: -4, loyalty: -3, base: 2 } }
+    ] },
+
+  { id: 'grantfraud', title: 'The Money Went Somewhere',
+    text: 'Two per cent of a programme you are proud of went to entities that did not exist. Two per cent is small, and it is also the only number anybody will remember.',
+    choices: [
+      { label: 'Claw it back publicly and slow the programme', eff: { approval: 1, policyStrength: -0.15, oppEnergy: -2 } },
+      { label: 'Fix it quietly and keep the money moving', eff: { oppEnergy: 6, policyStrength: 0.1 } },
+      { label: 'Point out that two per cent is a good number', eff: { approval: -3, base: 3, coherence: -1 } }
+    ] },
+
+  { id: 'succession2', title: 'The Party Wants to Know',
+    text: 'Your own chair asks, on the record, whether you intend to be involved in choosing who comes next. Any answer is a story.',
+    choices: [
+      { label: 'Endorse nobody and say the primary decides', eff: { loyalty: -2, bipartisan: 2, base: 2 } },
+      { label: 'Put your thumb on it', eff: { loyalty: 4, capital: -8, oppEnergy: 3 } },
+      { label: 'Refuse to discuss it', eff: { loyalty: -3, approval: -1 } }
     ] }
 ];
 
@@ -1136,7 +1341,41 @@ const SITUATIONS = [
     resolved: { econ: 1, base: 6, bipartisan: -4, capital: -6 },
     ignored:  { econ: -2, approval: -4, base: -8 },
     resolvedText: 'Contracts at three of the four tables, and the fourth settles on the pattern within a month.',
-    ignoredText: 'Eleven weeks of shutdown, and everyone involved agrees the White House was not there.' }
+    ignoredText: 'Eleven weeks of shutdown, and everyone involved agrees the White House was not there.' },
+
+  /* ---- added in 1.10 --------------------------------------------------- */
+
+  { id: 'waterCrisis', name: 'A City Cannot Drink Its Water', weeks: 4, quarters: 2,
+    desc: 'Four hundred thousand people on bottled water since Tuesday. The pipes are municipal, the money is federal, and the mayor has been asking for both since before you took office.',
+    working: 'Running the federal response',
+    resolved: { approval: 4, base: 5, deficit: 60, capital: -5 },
+    ignored: { approval: -8, base: -7, oppEnergy: 9 },
+    resolvedText: 'Filters, then pipes, then a standard that applies to everyone. The mayor stops calling because there is nothing left to ask for.',
+    ignoredText: 'It becomes a byword, and the byword is used about your administration rather than about the city.' },
+
+  { id: 'ally', name: 'An Ally Loses Its Government', weeks: 5, quarters: 2,
+    desc: 'The coalition collapsed overnight in a country hosting eleven thousand of your service members, and the party most likely to form the next one has campaigned on their departure.',
+    working: 'Working the succession',
+    resolved: { hawks: 6, bipartisan: 5, capital: -9 },
+    ignored: { hawks: -7, approval: -4, oppEnergy: 7 },
+    resolvedText: 'A basing agreement survives the transition with two paragraphs changed and nobody at home noticing either of them.',
+    ignoredText: 'The new government announces a timetable, and you learn about it from a wire report.' },
+
+  { id: 'railFail', name: 'A Derailment and What Was In It', weeks: 4, quarters: 2,
+    desc: 'Thirty-eight cars, eleven of them carrying something with a long name, beside a town of two thousand that has been told it is safe to return and does not believe it.',
+    working: 'Running the response',
+    resolved: { approval: 3, base: 6, econ: -0.3, capital: -6 },
+    ignored: { approval: -7, base: -8, oppEnergy: 10 },
+    resolvedText: 'Testing, relocation, and a rule the industry spends four years litigating. The town is still there.',
+    ignoredText: 'The footage of the plume is used in advertising against you for two cycles.' },
+
+  { id: 'shipping', name: 'The Strait Closes', weeks: 5, quarters: 2,
+    desc: 'A non-state group with better weapons than it should have has made a shipping lane uninsurable. Twelve per cent of the world\'s container traffic is now taking the long way around, and the price of everything is following it.',
+    working: 'Assembling the escort',
+    resolved: { econ: 0.8, hawks: 5, deficit: 70, capital: -8 },
+    ignored: { econ: -1.2, approval: -6, hawks: -5 },
+    resolvedText: 'A coalition escort, an insurance backstop, and rates back to something ordinary within five months.',
+    ignoredText: 'Freight costs stay tripled for a year and every price in the country carries a little of it.' }
 ];
 
 /* ==========================================================================

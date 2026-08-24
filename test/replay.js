@@ -79,6 +79,8 @@ async function autoplay(S, budget) {
   const G = S.G;
   let steps = 0;
   const seen = new Set();
+  const stalled = new Set();
+  let stallKey = '';
   while (steps++ < budget) {
     const scr = G.screen;
     if (scr === 'final') break;
@@ -128,8 +130,21 @@ async function autoplay(S, budget) {
         await S.record({ t: 'wair', f: F.id, d: 1 });
         S.G.screen = 'govern';
       }
-      const act = S.GOV_ACTIONS.find(x => x.group !== 'Re-Election' && x.cost <= g.capital && x.weeks <= g.weeks);
-      if (act && g.weeks > 2) { await S.record({ t: 'gov', i: act.id }); continue; }
+      /* An action that turns out to be unavailable — a bill when the agenda is
+         exhausted, say — costs nothing and leaves the quarter exactly as it
+         was. Without noticing that, the bot picks it again forever and the run
+         never leaves quarter five, which is precisely what it did: every
+         office-reaching run in the suite was stalling there and the war was
+         only ever found by accident. */
+      if (stallKey !== 'q' + g.quarter) { stallKey = 'q' + g.quarter; stalled.clear(); }
+      const act = S.GOV_ACTIONS.find(x => x.group !== 'Re-Election' && !stalled.has(x.id)
+        && x.cost <= g.capital && x.weeks <= g.weeks);
+      if (act && g.weeks > 2) {
+        const before = g.weeks + ':' + Math.round(g.capital) + ':' + G.screen;
+        await S.record({ t: 'gov', i: act.id });
+        if (before === G.gov.weeks + ':' + Math.round(G.gov.capital) + ':' + G.screen) stalled.add(act.id);
+        continue;
+      }
       await S.record({ t: 'endq' });
       continue;
     }
