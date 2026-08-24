@@ -1268,3 +1268,35 @@ tbody tr.on { background: #1d1810; }
   line-height: 1.5;
   resize: vertical;
 }
+
+/* ---- opponent temperament -----------------------------------------------
+   Named where the player is already reading the opposition, and given the
+   sentence that says what it will do to them rather than a bare label. */
+.dos-temper {
+  margin-top: 9px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gold);
+  border-radius: 4px;
+  background: var(--bg-3);
+}
+.dos-temper .tn, .opp-temper .tn {
+  display: block;
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--gold-lt);
+  font-weight: 700;
+}
+.dos-temper .tb, .opp-temper .tb {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  line-height: 1.45;
+  margin-top: 3px;
+}
+.opp-temper {
+  margin-top: 8px;
+  padding: 7px 9px;
+  border-top: 1px solid var(--line);
+}

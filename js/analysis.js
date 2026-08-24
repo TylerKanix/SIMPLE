@@ -433,7 +433,8 @@ function opponentDossier(player, opp, opts) {
     theirBest: contrast.slice(0, 3).filter(c => c.edge < -0.15),
     yourBest: contrast.slice().reverse().slice(0, 3).filter(c => c.edge > 0.15),
     center: platformCenter(opp.platform),
-    spread: platformSpread(opp.platform)
+    spread: platformSpread(opp.platform),
+    temperament: opp.temperament || null
   };
 }
 

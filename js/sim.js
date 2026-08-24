@@ -411,7 +411,7 @@ function genericOpponent(partyId) {
   pf.signature = DEFAULT_MESSAGE[partyId].slice();
   pf.signature.forEach(i => pf.salience[i] = 1);
   return makeCandidate({
-    id: 'gen', name: 'The Opposition', partyId, platform: pf,
+    id: 'gen', name: 'The Opposition', partyId, platform: pf, temperament: drawTemperament(),
     traits: { charisma: 55, discipline: 58, gravitas: 60, authenticity: 52, money: 70, legislative: 55 }
   });
 }
@@ -420,8 +420,27 @@ function genericOpponent(partyId) {
    They cannot cross the aisle and they pay the same base-turnout price you do
    for moderating, so the greedy search finds a real equilibrium rather than
    collapsing onto the median voter. */
+/* Draw a temperament. Always exactly one call into the stream, so adding this
+   shifted every seed's world once and will never shift it again. */
+function drawTemperament() {
+  return TEMPERAMENT_LIST[Math.floor(rnd() * TEMPERAMENT_LIST.length)];
+}
+
 function optimizeOpponent(opp, player, env, rounds) {
   const dir = opp.party.dir;
+  /* Temperament decides how hard they chase you and how straight a line they
+     take getting there. A disciplined operation runs the search further than
+     you do; a mobilizer barely runs it at all, because its theory of the race
+     is that the middle is not there to be won. */
+  const T = opp.temperament || TEMPERAMENTS.disciplined;
+  const effRounds = Math.max(0, Math.round(rounds * T.reposition));
+  /* How much a move has to be worth before they will make it. A disciplined
+     operation will take a tenth of a point and say thank you; a base mobilizer
+     wants a great deal more than that before it will move toward a middle it
+     does not believe in. Without this, the search converges to the same
+     platform for everyone and the temperament is only a label — which is
+     exactly what the first version did. */
+  const minGain = 0.0016 / Math.max(0.3, T.reposition);
   // Optimize the tipping-point margin, not the electoral vote count. It is
   // what a real campaign maximizes, and it is smooth — electoral votes come
   // in lumps of three to fifty-four, which stalls a greedy search early and
@@ -431,7 +450,7 @@ function optimizeOpponent(opp, player, env, rounds) {
     const r = projectElection(opp, player, env, {});
     return r.tipping.margin + r.popular * 0.05;
   };
-  for (let r = 0; r < rounds; r++) {
+  for (let r = 0; r < effRounds; r++) {
     const baseScore = score();
     let best = null;
     for (const id of ISSUE_IDS) {
@@ -441,13 +460,24 @@ function optimizeOpponent(opp, player, env, rounds) {
         if (st.p * dir < -0.5) continue;                  // cannot cross the aisle
         opp.platform.positions[id] = st.p;
         if (platformCenter(opp.platform) * dir < 0.45) { opp.platform.positions[id] = orig; continue; }
-        const s = score();
-        if (s > baseScore && (!best || s > best.s)) best = { id, p: st.p, s };
+        // An erratic campaign is reading the same polling as everyone else and
+        // drawing its own conclusions from it. The noise goes in the ranking,
+        // not the result, so they still move — just not always usefully.
+        /* The noise is what they *believe* the move is worth. An erratic
+           campaign is reading the same polling as everyone else and drawing
+           its own conclusions, so it is ranked on the noisy figure and judged
+           on the real one — which is how it ends up making moves that do not
+           help. */
+        const truth = score();
+        const believed = truth + gauss(0, 0.006 * T.noise);
+        if (believed > baseScore + minGain && (!best || believed > best.s)) best = { id, p: st.p, s: believed };
         opp.platform.positions[id] = orig;
       }
     }
     if (!best) break;
     opp.platform.positions[best.id] = best.p;
+    if (!opp.moves) opp.moves = [];
+    if (!opp.moves.some(m => m.id === best.id)) opp.moves.push({ id: best.id, p: best.p });
   }
   score();
   return opp;

@@ -364,6 +364,61 @@ const PERK_TEXT = {
 /* ==========================================================================
    PRIMARY RIVALS — ideological archetypes, generated per party
    ========================================================================== */
+/* ==========================================================================
+   TEMPERAMENT
+   Two campaigns with identical platforms are not the same opponent. A
+   temperament is drawn for every rival and for the general-election nominee,
+   and it decides how they spend, how far they will move to chase you, how
+   often they come at you rather than at the country, and which events they can
+   generate.
+
+   The numbers are multipliers on things the engine already does, so a
+   temperament cannot invent behaviour — it can only lean on behaviour that
+   exists. The test for whether these are worth having is whether a player who
+   has finished three runs can name the temperament blind, which is why the
+   spread on `reposition` and `attack` is wide enough to be legible rather than
+   merely present.
+   ========================================================================== */
+const TEMPERAMENTS = {
+  disciplined: {
+    id: 'disciplined', name: 'Disciplined',
+    spend: 0.92,        // holds money back for the close
+    risk: 0.55,         // rarely takes the swing that could backfire
+    reposition: 1.35,   // will move to where the votes are, coldly
+    noise: 0.35,        // and does not wander while doing it
+    attack: 0.70,
+    blurb: 'Runs the same twenty minutes every day and does not chase anything. Hard to knock off message, and slow to notice ground it has already lost.'
+  },
+  erratic: {
+    id: 'erratic', name: 'Erratic',
+    spend: 1.15,
+    risk: 1.55,
+    reposition: 0.75,
+    noise: 1.90,        // moves, but not always toward anything
+    attack: 1.05,
+    blurb: 'Capable of a very good week and a catastrophic one, sometimes consecutively. Spends fast, moves unpredictably, and is genuinely dangerous when it lands.'
+  },
+  attackdog: {
+    id: 'attackdog', name: 'Attack Dog',
+    spend: 1.08,
+    risk: 1.20,
+    reposition: 0.85,
+    noise: 0.70,
+    attack: 1.75,       // comes at you rather than at the country
+    blurb: 'Would rather raise your negatives than its own favourables, and is good at it. Your standing erodes even in the weeks you are winning.'
+  },
+  mobilizer: {
+    id: 'mobilizer', name: 'Base Mobilizer',
+    spend: 1.00,
+    risk: 1.05,
+    reposition: 0.45,   // will not moderate; that is the whole theory
+    noise: 0.55,
+    attack: 0.85,
+    blurb: 'Has decided the middle is a myth and is running a turnout operation instead. Will not moderate to chase you, and does not need to if its half of the country shows up.'
+  }
+};
+const TEMPERAMENT_LIST = Object.values(TEMPERAMENTS);
+
 const RIVAL_ARCHETYPES = {
   D: [
     { name: 'The Vice President',  lane: 'establishment', tilt: -0.35, funds: 210, name0: 'establishment',
@@ -1676,6 +1731,14 @@ for (const o of WAR_OUTCOMES) { OUTCOMES.push(o); OUTCOME_BY_ID[o.id] = o; }
    many and they always drift.
    ========================================================================== */
 const PATCH_NOTES = [
+  { v: '1.10', date: '2026-08-24', title: 'More to happen, and an opponent with a personality',
+    notes: [
+      'Three times the events. Eighteen on the trail, twenty-five in office, twelve situations — the pools used to run dry before the second term and you would see the same Tuesday twice.',
+      'Twelve of the new ones have read your record. The promise you broke comes back as an ad cut from your own podium footage. The state you carried by four tenths of a point sends its delegation to ask for something. The deficit you actually ran gets you a ratings watch at one number and a bad auction at another. A platform position you took against your own party is raised at a briefing now that somebody has to write the rule.',
+      'Rivals and the general-election nominee now have a temperament: disciplined, erratic, attack dog, or base mobilizer. It changes how fast they spend, how far they will move to chase you, and how much of their campaign they spend on you rather than on themselves. The dossier names it and says what it will do to you.',
+      'They are meant to be tellable apart without being told. A disciplined campaign moves two planks and gains a third of a point at the tipping state; an erratic one moves nearly three and loses a third of a point, because it is ranking the moves on what it believes they are worth rather than on what they are worth.'
+    ] },
+
   { v: '1.09', date: '2026-08-24', title: 'Saves, past runs, and a seed for the day',
     notes: [
       'The game saves itself. Close the tab mid-primary and the title screen offers Continue, on the same seed, at the same point, with the same platform.',

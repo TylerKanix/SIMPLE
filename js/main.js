@@ -1306,6 +1306,9 @@ function openDossier(opp, opts) {
       <div>
         <div class="dos-role">${esc(opp.role || 'The Nominee')} · ${esc(opp.party.name)}</div>
         <div class="dos-blurb">${esc(opp.blurb || 'The other party settled on them, and the country will decide whether that was a mistake.')}</div>
+        ${d.temperament ? `<div class="dos-temper">
+          <span class="tn">${esc(d.temperament.name)}</span>
+          <span class="tb">${esc(d.temperament.blurb)}</span></div>` : ''}
         <div class="trait-row">
           ${['charisma', 'gravitas', 'authenticity', 'discipline'].map(t =>
             `<span class="trait">${t.slice(0, 4).toUpperCase()} ${Math.round(opp.traits[t])}</span>`).join('')}
@@ -1424,7 +1427,7 @@ function archetypeCandidate(partyId, arch) {
   const person = personName();
   return makeCandidate({
     id: arch.name, name: `${LANE_TITLE[arch.lane] || 'Gov.'} ${person}`, role: arch.name,
-    partyId, platform: pf, blurb: arch.blurb,
+    partyId, platform: pf, blurb: arch.blurb, temperament: drawTemperament(),
     funds: arch.funds, lane: arch.lane, organization: 20 + rnd() * 25, momentum: 0,
     traits: Object.assign({ discipline: 55, money: 55, legislative: 55 }, arch.traits)
   });
@@ -1630,8 +1633,13 @@ async function holdContest() {
   // Rivals spend
   const spendMap = { player: pr.spend };
   for (const f of live) {
-    const s = Math.min(f.funds, contest.delegates / 1400 * 210 + 12);
-    f.funds -= s; spendMap[f.id] = s * (0.9 + rnd() * 0.4);
+    const T = f.temperament || TEMPERAMENTS.disciplined;
+    // How fast a campaign burns what it has, and how much variance it accepts
+    // in what that buys. A disciplined operation holds money back for the
+    // close; an erratic one spends it and finds out.
+    const s = Math.min(f.funds, (contest.delegates / 1400 * 210 + 12) * T.spend);
+    f.funds -= s;
+    spendMap[f.id] = s * (1 + (rnd() - 0.5) * 0.4 * T.risk);
   }
 
   const fieldForSim = [
@@ -2026,6 +2034,8 @@ function scrGeneral(el) {
   const worst = oppD.theirBest[0];
   ob.innerHTML = `
     <div class="opp-line"><span class="k">You, head to head</span>${delta(oppD.overall, { dp: 1, dead: 0.2 })}</div>
+    ${oppD.temperament ? `<div class="opp-temper"><span class="tn">${esc(oppD.temperament.name)}</span>
+      <span class="tb">${esc(oppD.temperament.blurb)}</span></div>` : ''}
     <div class="opp-line"><span class="k">Their platform center</span><span class="mono">${sgn(oppD.center, 2)}</span></div>
     ${worst ? `<div class="opp-attack">Running at you on <b>${esc(worst.issue.name)}</b> —
       “${esc(worst.theirLabel)}” <span class="mono r">${sgn(worst.edge, 1)}</span></div>` : ''}
@@ -2292,7 +2302,8 @@ async function endCampaignWeek() {
     const e = gn.efforts[t.abbr];
     // A state you have dug into absorbs most of what they throw at it.
     const blunt = (POSTURES[e.posture || 'balanced'] || POSTURES.balanced).blunt || 1;
-    e.persuade -= (7 + rnd() * 6) * blunt;   // opposition spending nets against yours
+    const T = (G.opp && G.opp.temperament) || TEMPERAMENTS.disciplined;
+    e.persuade -= (7 + rnd() * 6) * blunt * T.attack;   // opposition spending nets against yours
   }
 
   // Base morale decays unless fed. A disciplined campaign bleeds it slower:
