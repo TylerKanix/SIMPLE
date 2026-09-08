@@ -1,0 +1,1350 @@
+<title>Doors &amp; Shifts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  color-scheme: light;
+  --paper:#E5E9EF; --surface:#FAFBFC; --surface-2:#EFF2F6; --surface-3:#E2E7EE;
+  --ink:#131926; --ink-2:#48536A; --ink-3:#78849A;
+  --rule:#D2D9E3; --rule-strong:#B7C0CE;
+  --accent:#B06F06; --accent-ink:#8A5605; --accent-soft:#F7E8C9;
+  --good:#1E7A55; --good-soft:#DBEDE4;
+  --bad:#B23A2C; --bad-soft:#F6DFDA;
+  --shadow:0 1px 2px rgba(19,25,38,.07), 0 10px 26px -14px rgba(19,25,38,.30);
+  --c1:#2a78d6; --c2:#eb6834; --c3:#1baf7a; --c4:#eda100;
+  --c5:#e87ba4; --c6:#008300; --c7:#4a3aa7; --c8:#e34948;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --body:"Public Sans","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --paper:#0E121A; --surface:#171D28; --surface-2:#1E2634; --surface-3:#273041;
+    --ink:#E9EDF3; --ink-2:#A6B0BF; --ink-3:#78849A;
+    --rule:#2B3444; --rule-strong:#3B4759;
+    --accent:#E9A63B; --accent-ink:#F2C57E; --accent-soft:#33280F;
+    --good:#4FB088; --good-soft:#14291F;
+    --bad:#E0705F; --bad-soft:#2E1713;
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -16px rgba(0,0,0,.8);
+    --c1:#3987e5; --c2:#d95926; --c3:#199e70; --c4:#c98500;
+    --c5:#d55181; --c6:#008300; --c7:#9085e9; --c8:#e66767;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --paper:#0E121A; --surface:#171D28; --surface-2:#1E2634; --surface-3:#273041;
+  --ink:#E9EDF3; --ink-2:#A6B0BF; --ink-3:#78849A;
+  --rule:#2B3444; --rule-strong:#3B4759;
+  --accent:#E9A63B; --accent-ink:#F2C57E; --accent-soft:#33280F;
+  --good:#4FB088; --good-soft:#14291F;
+  --bad:#E0705F; --bad-soft:#2E1713;
+  --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -16px rgba(0,0,0,.8);
+  --c1:#3987e5; --c2:#d95926; --c3:#199e70; --c4:#c98500;
+  --c5:#d55181; --c6:#008300; --c7:#9085e9; --c8:#e66767;
+}
+
+*{box-sizing:border-box}
+body{background:var(--paper); color:var(--ink); font-family:var(--body);
+  font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased; margin:0;}
+h1,h2,h3{font-family:var(--display); margin:0; text-wrap:balance; letter-spacing:-.015em}
+button,input,select,textarea{font:inherit; color:inherit}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+.num{font-family:var(--mono); font-variant-numeric:tabular-nums; font-feature-settings:"tnum"}
+.lbl{font-family:var(--body); font-size:10px; font-weight:700; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--ink-3)}
+
+/* ---------- shell ---------- */
+.wrap{max-width:1560px; margin:0 auto; padding:0 20px 56px}
+
+.masthead{position:sticky; top:0; z-index:30; background:var(--paper);
+  border-bottom:1px solid var(--rule); padding:12px 20px}
+.mast-row{max-width:1520px; margin:0 auto; display:flex; align-items:baseline;
+  gap:14px; flex-wrap:wrap}
+.mast-title{font-family:var(--display); font-weight:700; font-size:21px; letter-spacing:-.02em}
+.mast-title button{all:unset; cursor:pointer; border-bottom:1px dashed transparent}
+.mast-title button:hover{border-bottom-color:var(--rule-strong)}
+.mast-sub{color:var(--ink-2); font-size:12.5px}
+.mast-sub b{color:var(--accent-ink); font-family:var(--mono); font-weight:600}
+.mast-actions{margin-left:auto; display:flex; gap:8px; align-items:center}
+
+/* KPI strip: one ruled band, not four cards */
+.kpis{margin:16px 0 0; display:grid;
+  grid-template-columns:repeat(4,1fr); background:var(--surface);
+  border:1px solid var(--rule); border-bottom:none; border-radius:var(--r) var(--r) 0 0;
+  overflow:hidden}
+.kpi{padding:11px 16px 13px; border-left:1px solid var(--rule)}
+.kpi:first-child{border-left:none}
+.kpi-v{font-family:var(--display); font-weight:700; font-size:27px; line-height:1.05;
+  letter-spacing:-.03em; font-variant-numeric:tabular-nums; display:flex;
+  align-items:baseline; gap:7px}
+.kpi-v small{font-family:var(--mono); font-size:12px; font-weight:500; color:var(--ink-3);
+  letter-spacing:0}
+.kpi-note{font-size:11.5px; color:var(--ink-2); margin-top:2px}
+.kpi-note .num{color:var(--ink)}
+
+.toolbar{display:flex; gap:10px; align-items:center;
+  flex-wrap:wrap; background:var(--surface); border:1px solid var(--rule);
+  border-radius:0 0 var(--r) var(--r); padding:8px 12px; margin:0 0 16px}
+.tabs{display:flex; gap:2px; background:var(--surface-2); padding:2px;
+  border-radius:var(--r); border:1px solid var(--rule)}
+.tab{all:unset; cursor:pointer; padding:5px 13px; border-radius:4px; font-size:12.5px;
+  font-weight:600; color:var(--ink-2)}
+.tab[aria-selected="true"]{background:var(--surface); color:var(--ink); box-shadow:var(--shadow)}
+.tab:hover{color:var(--ink)}
+.spacer{flex:1 1 auto}
+
+button.btn{cursor:pointer; background:var(--surface); border:1px solid var(--rule-strong);
+  border-radius:var(--r); padding:5px 11px; font-size:12.5px; font-weight:600;
+  color:var(--ink-2)}
+button.btn:hover{background:var(--surface-2); color:var(--ink)}
+button.btn.primary{background:var(--ink); border-color:var(--ink); color:var(--surface)}
+button.btn.primary:hover{background:var(--ink-2); border-color:var(--ink-2)}
+button.btn.ghost{border-color:transparent; background:transparent}
+button.btn.ghost:hover{background:var(--surface-2)}
+button.btn.danger{color:var(--bad); border-color:var(--rule)}
+button.btn.danger:hover{background:var(--bad-soft)}
+button.btn:disabled{opacity:.45; cursor:not-allowed}
+
+select.sel, input.inp, textarea.inp{background:var(--surface); border:1px solid var(--rule-strong);
+  border-radius:var(--r); padding:5px 9px; font-size:12.5px; color:var(--ink); width:100%}
+select.sel{cursor:pointer; padding-right:24px}
+.filters{display:flex; gap:6px; align-items:center}
+.filters select.sel{width:auto; max-width:190px}
+.monthnav{display:flex; align-items:center; gap:4px}
+.monthnav .m{font-family:var(--display); font-weight:600; font-size:15px;
+  min-width:132px; text-align:center; letter-spacing:-.01em}
+.iconbtn{all:unset; cursor:pointer; width:26px; height:26px; display:grid;
+  place-items:center; border-radius:var(--r); color:var(--ink-2); font-size:15px}
+.iconbtn:hover{background:var(--surface-2); color:var(--ink)}
+
+.banner{margin:0 0 14px; display:flex; gap:10px; align-items:center;
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:var(--r);
+  padding:8px 12px; font-size:12.5px; color:var(--ink)}
+.banner b{font-weight:700}
+.banner .spacer{flex:1}
+
+/* ---------- board ---------- */
+.board{display:grid; grid-template-columns:minmax(0,1fr) 352px; gap:16px; align-items:start}
+@media (max-width:1120px){.board{grid-template-columns:minmax(0,1fr)}}
+
+.panel{background:var(--surface); border:1px solid var(--rule); border-radius:var(--r);
+  overflow:hidden}
+
+/* ---------- calendar ---------- */
+.cal-head, .cal-week{display:grid; grid-template-columns:repeat(7,minmax(0,1fr)) 116px}
+@media (max-width:820px){
+  .cal-head,.cal-week{grid-template-columns:repeat(7,minmax(0,1fr))}
+  .wk{display:none !important}
+}
+.cal-head{background:var(--surface-2); border-bottom:1px solid var(--rule)}
+.cal-head div{padding:7px 9px; border-left:1px solid var(--rule)}
+.cal-head div:first-child{border-left:none}
+.cal-head .wk{text-align:right}
+.cal-week{border-bottom:1px solid var(--rule)}
+.cal-week:last-child{border-bottom:none}
+
+.day{border-left:1px solid var(--rule); min-height:118px; padding:5px 5px 7px;
+  display:flex; flex-direction:column; gap:4px; position:relative; background:var(--surface)}
+.day:first-child{border-left:none}
+.day.weekend{background:var(--surface-2)}
+.day.out{background:var(--surface-2); opacity:.5}
+.day.sel{box-shadow:inset 0 0 0 2px var(--accent)}
+.day-top{display:flex; align-items:center; gap:5px; min-height:19px}
+.dnum{font-family:var(--mono); font-size:12.5px; font-weight:600; color:var(--ink-2);
+  width:20px; text-align:center; border-radius:4px}
+.day.today .dnum{background:var(--ink); color:var(--surface)}
+.day-flag{font-size:9.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--accent-ink); background:var(--accent-soft); padding:1px 5px; border-radius:3px}
+.addbtn{all:unset; cursor:pointer; margin-left:auto; width:18px; height:18px; display:grid;
+  place-items:center; border-radius:4px; color:var(--ink-3); font-size:15px; line-height:1;
+  opacity:0}
+.day:hover .addbtn, .addbtn:focus-visible{opacity:1}
+.addbtn:hover{background:var(--surface-3); color:var(--ink)}
+.day-body{display:flex; flex-direction:column; gap:3px; flex:1}
+
+.chip{all:unset; cursor:pointer; display:block; box-sizing:border-box; background:var(--surface-2);
+  border:1px solid var(--rule); border-left:3px solid var(--ct,var(--ink-3));
+  border-radius:0 4px 4px 0; padding:3px 5px 4px; position:relative}
+.day.weekend .chip{background:var(--surface)}
+.chip:hover{border-color:var(--rule-strong); border-left-color:var(--ct,var(--ink-3))}
+.chip.canceled{opacity:.45}
+.chip.canceled .chip-name{text-decoration:line-through}
+.chip-r1{display:flex; align-items:baseline; gap:4px}
+.chip-t{font-family:var(--mono); font-size:10px; font-weight:600; color:var(--ink-2); flex:none}
+.chip-name{font-size:11.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; flex:1; min-width:0}
+.chip-d{font-family:var(--mono); font-size:11px; font-weight:600; flex:none; color:var(--ink)}
+.chip-r2{display:flex; align-items:center; gap:3px; margin-top:2px}
+.dot{width:15px; height:15px; border-radius:50%; background:var(--surface-3);
+  border:1px solid var(--rule-strong); font-size:8px; font-weight:700; display:grid;
+  place-items:center; color:var(--ink-2); letter-spacing:0}
+.dot.more{background:transparent; border-style:dashed}
+.dot.empty{border-style:dashed; color:var(--bad); border-color:var(--bad)}
+.meter{display:block; height:3px; background:var(--surface-3); border-radius:2px;
+  overflow:hidden; margin-top:3px; width:100%}
+.meter i{display:block; height:100%; background:var(--accent); border-radius:2px}
+.meter i.done{background:var(--good)}
+
+.wk{border-left:1px solid var(--rule); padding:7px 9px; background:var(--surface-2);
+  display:flex; flex-direction:column; gap:3px}
+.wk-v{font-family:var(--mono); font-size:15px; font-weight:600; letter-spacing:-.02em;
+  text-align:right}
+.wk-of{font-family:var(--mono); font-size:10.5px; color:var(--ink-3); text-align:right}
+.wk-vs{font-size:10.5px; color:var(--ink-2); text-align:right; margin-top:auto}
+
+/* ---------- rail ---------- */
+.rail{position:sticky; top:74px; display:flex; flex-direction:column; gap:12px}
+@media (max-width:1120px){.rail{position:static}}
+.rail-head{display:flex; align-items:center; gap:8px; padding:10px 12px;
+  border-bottom:1px solid var(--rule); background:var(--surface-2)}
+.rail-head h2{font-size:14px; font-weight:600}
+.rail-body{padding:10px 12px; display:flex; flex-direction:column; gap:9px;
+  max-height:min(62vh,620px); overflow-y:auto}
+@media (max-width:1120px){.rail-body{max-height:none}}
+
+.scard{border:1px solid var(--rule); border-left:3px solid var(--ct,var(--ink-3));
+  border-radius:0 var(--r) var(--r) 0; padding:9px 10px; display:flex;
+  flex-direction:column; gap:7px; background:var(--surface)}
+.scard.canceled{opacity:.55}
+.scard-h{display:flex; align-items:baseline; gap:7px}
+.scard-t{font-family:var(--mono); font-size:12px; font-weight:600; color:var(--ink-2)}
+.scard-n{font-weight:700; font-size:13.5px; flex:1; min-width:0}
+.pill{font-size:9.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  padding:2px 6px; border-radius:3px; background:var(--surface-3); color:var(--ink-2);
+  white-space:nowrap}
+.pill.done{background:var(--good-soft); color:var(--good)}
+.pill.short{background:var(--bad-soft); color:var(--bad)}
+.scard-meta{font-size:11.5px; color:var(--ink-2); display:flex; flex-direction:column; gap:2px}
+.scard-meta .k{color:var(--ink-3); display:inline-block; width:52px}
+.vrow{display:flex; flex-wrap:wrap; gap:4px}
+.vchip{font-size:11px; font-weight:600; background:var(--surface-2); border:1px solid var(--rule);
+  border-radius:11px; padding:2px 8px; color:var(--ink-2); white-space:nowrap}
+.vchip.none{border-style:dashed; color:var(--bad); border-color:var(--bad); background:transparent}
+.doors{display:flex; align-items:center; gap:8px; border-top:1px solid var(--rule);
+  padding-top:7px}
+.doors label{font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-3)}
+.doors input{width:62px; text-align:right; font-family:var(--mono); font-weight:600}
+.doors .goal{font-family:var(--mono); font-size:12px; color:var(--ink-2)}
+.scard-acts{display:flex; gap:5px}
+.scard-acts .btn{padding:3px 8px; font-size:11.5px}
+.empty{text-align:center; color:var(--ink-3); font-size:12.5px; padding:22px 10px;
+  border:1px dashed var(--rule-strong); border-radius:var(--r)}
+.empty b{display:block; color:var(--ink-2); font-size:13.5px; margin-bottom:3px;
+  font-family:var(--display)}
+.daygroup{font-family:var(--mono); font-size:10.5px; font-weight:600; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--ink-3); border-bottom:1px solid var(--rule);
+  padding-bottom:3px; margin-top:3px}
+.daygroup:first-child{margin-top:0}
+
+/* ---------- tables ---------- */
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse; width:100%; min-width:640px}
+th{text-align:left; font-size:10px; font-weight:700; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--ink-3); padding:8px 12px;
+  border-bottom:1px solid var(--rule); background:var(--surface-2); white-space:nowrap}
+th.r,td.r{text-align:right}
+td{padding:9px 12px; border-bottom:1px solid var(--rule); font-size:13px; vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--surface-2)}
+td .name{font-weight:600}
+td .sub{font-size:11.5px; color:var(--ink-3)}
+.swatch{width:9px; height:9px; border-radius:2px; display:inline-block;
+  background:var(--ct,var(--ink-3)); margin-right:7px; vertical-align:baseline}
+.cov{display:flex; align-items:center; gap:8px; min-width:150px}
+.cov .meter{flex:1; height:6px; margin:0}
+.cov .num{font-size:11.5px; color:var(--ink-2); width:38px; text-align:right}
+.panel-head{display:flex; align-items:center; gap:10px; padding:10px 12px;
+  border-bottom:1px solid var(--rule); background:var(--surface-2)}
+.panel-head h2{font-size:14px; font-weight:600}
+.panel-head p{margin:0; font-size:11.5px; color:var(--ink-3)}
+
+/* ---------- dialog ---------- */
+dialog{border:1px solid var(--rule-strong); border-radius:8px; background:var(--surface);
+  color:var(--ink); padding:0; box-shadow:var(--shadow); width:min(560px, calc(100vw - 32px));
+  max-height:calc(100vh - 48px)}
+dialog::backdrop{background:rgba(10,14,22,.5)}
+.dlg-h{display:flex; align-items:center; gap:10px; padding:13px 16px;
+  border-bottom:1px solid var(--rule)}
+.dlg-h h2{font-size:16px; font-weight:700}
+.dlg-b{padding:14px 16px; display:flex; flex-direction:column; gap:12px;
+  max-height:min(66vh,560px); overflow-y:auto}
+.dlg-f{display:flex; gap:8px; padding:12px 16px; border-top:1px solid var(--rule);
+  background:var(--surface-2); border-radius:0 0 7px 7px}
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px}
+@media (max-width:520px){.grid2,.grid3{grid-template-columns:1fr}}
+.field{display:flex; flex-direction:column; gap:4px}
+.field .lbl{color:var(--ink-2)}
+.pickers{display:flex; flex-wrap:wrap; gap:5px}
+.pick{all:unset; cursor:pointer; font-size:12px; font-weight:600; padding:4px 10px;
+  border-radius:13px; border:1px solid var(--rule-strong); color:var(--ink-2);
+  background:var(--surface)}
+.pick:hover{background:var(--surface-2)}
+.pick[aria-pressed="true"]{background:var(--ink); border-color:var(--ink); color:var(--surface)}
+.pick .r{font-weight:400; opacity:.7; font-size:11px}
+.estimate{background:var(--surface-2); border:1px solid var(--rule); border-radius:var(--r);
+  padding:8px 10px; font-size:12px; color:var(--ink-2); display:flex; align-items:center; gap:9px}
+.estimate .num{color:var(--ink); font-weight:600}
+.estimate .spacer{flex:1}
+.hint{font-size:11.5px; color:var(--ink-3)}
+.swatches{display:flex; gap:5px; flex-wrap:wrap}
+.sw{all:unset; cursor:pointer; width:22px; height:22px; border-radius:4px;
+  border:2px solid transparent; box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
+.sw[aria-pressed="true"]{border-color:var(--ink)}
+
+.toast{position:fixed; left:50%; transform:translateX(-50%); bottom:22px; z-index:80;
+  background:var(--ink); color:var(--paper); font-size:12.5px; font-weight:600;
+  padding:8px 16px; border-radius:20px; box-shadow:var(--shadow); opacity:0;
+  transition:opacity .18s ease, transform .18s ease; pointer-events:none}
+.toast.on{opacity:1; transform:translateX(-50%) translateY(-4px)}
+@media (prefers-reduced-motion: reduce){*{animation:none !important; transition:none !important}}
+
+@media print{
+  .masthead,.toolbar,.rail,.banner,.addbtn,.scard-acts{display:none !important}
+  .board{grid-template-columns:1fr}
+  body{background:#fff}
+  .day{min-height:96px}
+}
+</style>
+
+<header class="masthead">
+  <div class="mast-row">
+    <div class="mast-title"><button id="campName" title="Rename this campaign">Campaign</button></div>
+    <div class="mast-sub" id="mastSub"></div>
+    <div class="mast-actions">
+      <button class="btn ghost" id="btnPrint">Print month</button>
+      <button class="btn ghost" id="btnSettings">Settings</button>
+      <button class="btn primary" id="btnNewShift">&#43; New shift</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="kpis" id="kpis"></div>
+
+  <div class="toolbar">
+    <div class="tabs" role="tablist" aria-label="Views">
+      <button class="tab" role="tab" id="tab-calendar" aria-selected="true">Calendar</button>
+      <button class="tab" role="tab" id="tab-roster" aria-selected="false">Volunteers</button>
+      <button class="tab" role="tab" id="tab-turf" aria-selected="false">Turf</button>
+    </div>
+    <div class="monthnav" id="monthnav">
+      <button class="iconbtn" id="prevM" aria-label="Previous month">&#8249;</button>
+      <div class="m num" id="monthLabel">&nbsp;</div>
+      <button class="iconbtn" id="nextM" aria-label="Next month">&#8250;</button>
+      <button class="btn ghost" id="todayBtn">Today</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="filters">
+      <span class="lbl">Show</span>
+      <select class="sel" id="fVol" aria-label="Filter by volunteer"></select>
+      <select class="sel" id="fTurf" aria-label="Filter by turf"></select>
+    </div>
+  </div>
+
+  <div id="banner"></div>
+
+  <div class="board">
+    <div id="mainpane"></div>
+    <aside class="rail panel" id="rail"></aside>
+  </div>
+</div>
+
+<dialog id="shiftDlg">
+  <form method="dialog" id="shiftForm">
+    <div class="dlg-h"><h2 id="shiftDlgTitle">New shift</h2></div>
+    <div class="dlg-b">
+      <div class="grid3">
+        <div class="field"><label class="lbl" for="sfDate">Date</label>
+          <input class="inp" type="date" id="sfDate" required></div>
+        <div class="field"><label class="lbl" for="sfStart">Launch</label>
+          <input class="inp" type="time" id="sfStart" required></div>
+        <div class="field"><label class="lbl" for="sfEnd">Off the doors</label>
+          <input class="inp" type="time" id="sfEnd" required></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="sfTurf">Turf</label>
+          <select class="sel" id="sfTurf"></select></div>
+        <div class="field"><label class="lbl" for="sfSite">Launch site</label>
+          <input class="inp" type="text" id="sfSite" placeholder="Where volunteers pick up packets"></div>
+      </div>
+      <div class="field">
+        <span class="lbl">Canvassers out <span id="sfVolCount" class="num"></span></span>
+        <div class="pickers" id="sfVols"></div>
+      </div>
+      <div class="estimate" id="sfEstimate"></div>
+      <div class="grid3">
+        <div class="field"><label class="lbl" for="sfGoal">Door goal</label>
+          <input class="inp num" type="number" min="0" step="5" id="sfGoal"></div>
+        <div class="field"><label class="lbl" for="sfKnocked">Doors knocked</label>
+          <input class="inp num" type="number" min="0" step="1" id="sfKnocked"></div>
+        <div class="field"><label class="lbl" for="sfContacts">Contacts made</label>
+          <input class="inp num" type="number" min="0" step="1" id="sfContacts"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="sfStatus">Status</label>
+          <select class="sel" id="sfStatus">
+            <option value="planned">Planned</option>
+            <option value="done">Knocked</option>
+            <option value="canceled">Canceled</option>
+          </select></div>
+        <div class="field"><label class="lbl" for="sfRepeat">Repeat</label>
+          <select class="sel" id="sfRepeat">
+            <option value="0">Just this date</option>
+            <option value="1">Weekly &times; 2</option>
+            <option value="3">Weekly &times; 4</option>
+            <option value="7">Weekly, through Election Day</option>
+          </select></div>
+      </div>
+      <div class="field"><label class="lbl" for="sfNotes">Notes for the packet</label>
+        <textarea class="inp" id="sfNotes" rows="2" placeholder="Walk list, script, anything the captain needs"></textarea></div>
+    </div>
+    <div class="dlg-f">
+      <button type="button" class="btn danger" id="sfDelete">Delete</button>
+      <span class="spacer" style="flex:1"></span>
+      <button type="button" class="btn" id="sfCancel">Cancel</button>
+      <button type="submit" class="btn primary">Save shift</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="volDlg">
+  <form method="dialog" id="volForm">
+    <div class="dlg-h"><h2 id="volDlgTitle">Add volunteer</h2></div>
+    <div class="dlg-b">
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="vfName">Name</label>
+          <input class="inp" type="text" id="vfName" required placeholder="First and last"></div>
+        <div class="field"><label class="lbl" for="vfRole">Role</label>
+          <select class="sel" id="vfRole">
+            <option>Canvasser</option><option>Site captain</option>
+            <option>Driver</option><option>Data entry</option><option>Candidate</option>
+          </select></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="vfPhone">Phone</label>
+          <input class="inp" type="tel" id="vfPhone" placeholder="For the shift-reminder text"></div>
+        <div class="field"><label class="lbl" for="vfAvail">Usually available</label>
+          <input class="inp" type="text" id="vfAvail" placeholder="Sat mornings, Tue/Thu evenings"></div>
+      </div>
+      <div class="field"><label class="lbl" for="vfNotes">Notes</label>
+        <textarea class="inp" id="vfNotes" rows="2" placeholder="Has a car, Spanish-speaking, needs a walk partner"></textarea></div>
+    </div>
+    <div class="dlg-f">
+      <button type="button" class="btn danger" id="vfDelete">Remove</button>
+      <span class="spacer" style="flex:1"></span>
+      <button type="button" class="btn" id="vfCancel">Cancel</button>
+      <button type="submit" class="btn primary">Save volunteer</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="turfDlg">
+  <form method="dialog" id="turfForm">
+    <div class="dlg-h"><h2 id="turfDlgTitle">Add turf</h2></div>
+    <div class="dlg-b">
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="tfName">Turf name</label>
+          <input class="inp" type="text" id="tfName" required placeholder="Elm St grid"></div>
+        <div class="field"><label class="lbl" for="tfPrecinct">Precinct / ward</label>
+          <input class="inp" type="text" id="tfPrecinct" placeholder="3-2"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="tfDoors">Doors in the universe</label>
+          <input class="inp num" type="number" min="0" step="10" id="tfDoors" placeholder="0"></div>
+        <div class="field"><span class="lbl">Map color</span>
+          <div class="swatches" id="tfColors"></div></div>
+      </div>
+      <div class="field"><label class="lbl" for="tfNotes">Notes</label>
+        <textarea class="inp" id="tfNotes" rows="2" placeholder="Apartments need a buzzer code; dogs on Maple"></textarea></div>
+    </div>
+    <div class="dlg-f">
+      <button type="button" class="btn danger" id="tfDelete">Delete</button>
+      <span class="spacer" style="flex:1"></span>
+      <button type="button" class="btn" id="tfCancel">Cancel</button>
+      <button type="submit" class="btn primary">Save turf</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="setDlg">
+  <form method="dialog" id="setForm">
+    <div class="dlg-h"><h2>Campaign settings</h2></div>
+    <div class="dlg-b">
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="cfName">Campaign</label>
+          <input class="inp" type="text" id="cfName" required></div>
+        <div class="field"><label class="lbl" for="cfElection">Election Day</label>
+          <input class="inp" type="date" id="cfElection"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="cfRate">Doors per canvasser-hour</label>
+          <input class="inp num" type="number" min="1" max="60" id="cfRate">
+          <span class="hint">Used to estimate door goals. 15&ndash;20 is typical for a walkable grid.</span></div>
+        <div class="field"><label class="lbl" for="cfWeekly">Weekly door goal</label>
+          <input class="inp num" type="number" min="0" step="50" id="cfWeekly">
+          <span class="hint">The pace you need to finish your universe by Election Day.</span></div>
+      </div>
+    </div>
+    <div class="dlg-f">
+      <span class="spacer" style="flex:1"></span>
+      <button type="button" class="btn" id="cfCancel">Cancel</button>
+      <button type="submit" class="btn primary">Save settings</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------------- helpers ---------------- */
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var pad = function (n) { return String(n).padStart(2, "0"); };
+  var iso = function (d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); };
+  var fromISO = function (s) { var p = String(s).split("-").map(Number); return new Date(p[0], p[1] - 1, p[2]); };
+  var TODAY = iso(new Date());
+  var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); };
+  var ESCMAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ESCMAP[c]; }); };
+  var nf = function (n) { return (Number(n) || 0).toLocaleString("en-US"); };
+  var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var MON = ["January", "February", "March", "April", "May", "June", "July",
+             "August", "September", "October", "November", "December"];
+  var M3 = function (i) { return MON[i].slice(0, 3); };
+
+  function fmtTime(hm) {
+    if (!hm) return "";
+    var p = String(hm).split(":"), H = Number(p[0]) || 0, M = Number(p[1]) || 0;
+    var ap = H >= 12 ? "p" : "a", h = H % 12; if (h === 0) h = 12;
+    return M ? h + ":" + pad(M) + ap : h + ap;
+  }
+  function mins(hm) { var p = String(hm || "0:0").split(":"); return (Number(p[0]) || 0) * 60 + (Number(p[1]) || 0); }
+  function hoursOf(s) { return Math.max(0, (mins(s.end) - mins(s.start)) / 60); }
+  function initials(name) {
+    var w = String(name || "").trim().split(/\s+/);
+    if (!w[0]) return "?";
+    return (w.length > 1 ? w[0][0] + w[w.length - 1][0] : w[0].slice(0, 2)).toUpperCase();
+  }
+  function dayDiff(a, b) { return Math.round((fromISO(b) - fromISO(a)) / 86400000); }
+  function longDate(ds) { var d = fromISO(ds); return DOW[d.getDay()] + ", " + MON[d.getMonth()] + " " + d.getDate(); }
+  function shortDate(ds) { var d = fromISO(ds); return DOW[d.getDay()] + " " + M3(d.getMonth()) + " " + d.getDate(); }
+
+  /* ---------------- state ---------------- */
+  var now = new Date();
+  var S = {
+    settings: { name: "Field Program", electionDate: "", rate: 18, weeklyGoal: 0 },
+    volunteers: [], turf: [], shifts: [],
+    ui: { tab: "calendar", month: new Date(now.getFullYear(), now.getMonth(), 1),
+          selected: null, fVol: "", fTurf: "", lastStart: "", lastEnd: "" }
+  };
+
+  /* ---------------- store ---------------- */
+  function dbMsg(e) {
+    var c = e && e.code;
+    if (c === "quota_exceeded") return "The shared plan is full. Delete old shifts to make room.";
+    if (c === "resource_exhausted") return "Too many changes at once. Wait a moment and try again.";
+    if (c === "revoked") return "Your access to the shared plan ended. Changes are no longer saving.";
+    if (c === "invalid_argument") return "That change was not accepted. Check the fields and try again.";
+    return "Change did not save. Check your connection and try again.";
+  }
+
+  var Store = {
+    mode: "local", db: null, key: "canvassboard.v1", connected: false,
+    loadLocal: function () {
+      try {
+        var raw = localStorage.getItem(this.key); if (!raw) return;
+        var o = JSON.parse(raw);
+        if (o.settings) Object.assign(S.settings, o.settings);
+        S.volunteers = o.volunteers || []; S.turf = o.turf || []; S.shifts = o.shifts || [];
+      } catch (e) { /* private mode or blocked storage: run in memory */ }
+    },
+    saveLocal: function () {
+      if (this.mode !== "local") return;
+      try {
+        localStorage.setItem(this.key, JSON.stringify({
+          settings: S.settings, volunteers: S.volunteers, turf: S.turf, shifts: S.shifts
+        }));
+      } catch (e) { /* ignore */ }
+    },
+    connect: function () {
+      var self = this;
+      var p = null;
+      try { if (window.claude && typeof window.claude.use === "function") p = window.claude.use("db"); } catch (e) { p = null; }
+      if (!p) { self.connected = true; renderAll(); return; }
+      Promise.resolve(p).then(function (db) {
+        self.connected = true;
+        if (!db) { renderAll(); return; }
+        self.db = db; self.mode = "db";
+        var bind = function (coll, key) {
+          db.collection(coll).onSnapshot(function (snap) {
+            S[key] = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+            renderAll();
+          }, function (err) { note(dbMsg(err)); });
+        };
+        bind("volunteers", "volunteers"); bind("turf", "turf"); bind("shifts", "shifts");
+        db.doc("settings/campaign").onSnapshot(function (d) {
+          if (d.exists) Object.assign(S.settings, d.data());
+          renderAll();
+        }, function () {});
+        renderAll();
+      }, function () { self.connected = true; renderAll(); });
+    },
+    put: function (kind, obj) {
+      var list = S[kind], i = -1;
+      for (var k = 0; k < list.length; k++) if (list[k].id === obj.id) { i = k; break; }
+      if (i >= 0) list[i] = obj; else list.push(obj);
+      if (this.mode === "db") {
+        var body = Object.assign({}, obj); delete body.id;
+        this.db.doc(kind + "/" + obj.id).set(body).catch(function (e) { note(dbMsg(e)); });
+      } else this.saveLocal();
+      renderAll();
+    },
+    del: function (kind, id) {
+      S[kind] = S[kind].filter(function (x) { return x.id !== id; });
+      if (this.mode === "db") this.db.doc(kind + "/" + id).delete().catch(function (e) { note(dbMsg(e)); });
+      else this.saveLocal();
+      renderAll();
+    },
+    putSettings: function () {
+      if (this.mode === "db") this.db.doc("settings/campaign").set(Object.assign({}, S.settings)).catch(function (e) { note(dbMsg(e)); });
+      else this.saveLocal();
+      renderAll();
+    }
+  };
+
+  /* ---------------- derived ---------------- */
+  function volById(id) { return S.volunteers.filter(function (v) { return v.id === id; })[0]; }
+  function turfById(id) { return S.turf.filter(function (t) { return t.id === id; })[0]; }
+  function turfColor(t) { return t && t.color ? "var(--c" + t.color + ")" : "var(--ink-3)"; }
+  function isCanceled(s) { return s.status === "canceled"; }
+  function goalOf(s) { return Number(s.doorGoal) || 0; }
+  function knockedOf(s) { return Number(s.doorsKnocked) || 0; }
+  function crew(s) { return (s.volunteerIds || []).map(volById).filter(Boolean); }
+
+  function visibleShifts() {
+    return S.shifts.filter(function (s) {
+      if (S.ui.fVol && (s.volunteerIds || []).indexOf(S.ui.fVol) < 0) return false;
+      if (S.ui.fTurf && s.turfId !== S.ui.fTurf) return false;
+      return true;
+    });
+  }
+  function byTime(a, b) { return String(a.start || "").localeCompare(String(b.start || "")); }
+  function shiftsOn(ds, list) {
+    return (list || visibleShifts()).filter(function (s) { return s.date === ds; }).sort(byTime);
+  }
+  function estimateDoors(n, hrs, rate) {
+    var raw = Math.max(1, n) * hrs * (Number(rate) || 18);
+    return Math.round(raw / 5) * 5;
+  }
+  function monthGrid(m) {
+    var y = m.getFullYear(), mo = m.getMonth();
+    var first = new Date(y, mo, 1), last = new Date(y, mo + 1, 0);
+    var cur = new Date(y, mo, 1 - first.getDay()), weeks = [];
+    while (true) {
+      var days = [];
+      for (var i = 0; i < 7; i++) { days.push(new Date(cur)); cur.setDate(cur.getDate() + 1); }
+      weeks.push(days);
+      if (cur > last) break;
+    }
+    return weeks;
+  }
+  function monthStats() {
+    var y = S.ui.month.getFullYear(), mo = S.ui.month.getMonth();
+    var live = visibleShifts().filter(function (s) {
+      var d = fromISO(s.date);
+      return d.getFullYear() === y && d.getMonth() === mo && !isCanceled(s);
+    });
+    var st = { n: live.length, planned: 0, knocked: 0, contacts: 0, ahead: 0, slots: 0, unstaffed: 0, vols: {} };
+    live.forEach(function (s) {
+      st.planned += goalOf(s); st.knocked += knockedOf(s); st.contacts += Number(s.contacts) || 0;
+      var c = s.volunteerIds || [];
+      st.slots += c.length;
+      c.forEach(function (id) { st.vols[id] = 1; });
+      if (s.date >= TODAY) { st.ahead++; if (!c.length) st.unstaffed++; }
+    });
+    st.volCount = Object.keys(st.vols).length;
+    return st;
+  }
+
+  /* ---------------- render: masthead + kpis ---------------- */
+  function renderMast() {
+    $("#campName").textContent = S.settings.name || "Field Program";
+    var sub = "";
+    if (S.settings.electionDate) {
+      var d = dayDiff(TODAY, S.settings.electionDate);
+      sub = d > 0 ? "<b>" + d + "</b> days to Election Day"
+          : d === 0 ? "<b>Election Day</b>"
+          : "<b>" + Math.abs(d) + "</b> days past Election Day";
+    } else {
+      sub = 'Field operations board';
+    }
+    $("#mastSub").innerHTML = sub;
+  }
+
+  function kpi(v, small, note) {
+    return '<div class="kpi"><div class="kpi-v">' + v + (small ? "<small>" + small + "</small>" : "") +
+      '</div><div class="kpi-note">' + note + "</div></div>";
+  }
+  function renderKpis() {
+    var st = monthStats();
+    var monthName = M3(S.ui.month.getMonth());
+    var pct = st.planned ? Math.round(st.knocked / st.planned * 100) : 0;
+    var doorsNote = st.planned
+      ? 'of <span class="num">' + nf(st.planned) + "</span> planned &middot; " + pct + "%"
+      : "Nothing planned in " + monthName + " yet";
+    var shiftNote = st.n
+      ? '<span class="num">' + st.ahead + "</span> still ahead &middot; " +
+        '<span class="num">' + (st.n - st.ahead) + "</span> behind you"
+      : "No canvasses scheduled";
+    if (st.unstaffed) shiftNote += " &middot; " + st.unstaffed + " unstaffed";
+    var rosterNote = S.volunteers.length
+      ? 'of <span class="num">' + S.volunteers.length + "</span> on the roster &middot; " +
+        '<span class="num">' + st.slots + "</span> volunteer-shifts"
+      : "Add your roster on the Volunteers tab";
+    var elec, elecNote;
+    if (S.settings.electionDate) {
+      var dd = dayDiff(TODAY, S.settings.electionDate);
+      elec = dd >= 0 ? String(dd) : "&mdash;";
+      elecNote = (dd >= 0 ? "days out &middot; " : "was ") + longDate(S.settings.electionDate);
+    } else { elec = "&mdash;"; elecNote = '<button class="btn ghost" style="padding:0;border:0" data-opensettings>Set Election Day</button>'; }
+
+    $("#kpis").innerHTML =
+      kpi(nf(st.knocked), "doors", "Knocked in " + monthName + " &middot; " + doorsNote) +
+      kpi(String(st.n), "shifts", shiftNote) +
+      kpi(String(st.volCount), "out", rosterNote) +
+      kpi(elec, "", elecNote);
+  }
+
+  function renderFilters() {
+    var vSig = S.volunteers.map(function (v) { return v.id + v.name; }).join("|");
+    var tSig = S.turf.map(function (t) { return t.id + t.name; }).join("|");
+    var fv = $("#fVol"), ft = $("#fTurf");
+    if (fv.dataset.sig !== vSig) {
+      fv.dataset.sig = vSig;
+      fv.innerHTML = '<option value="">Every volunteer</option>' + S.volunteers.slice()
+        .sort(function (a, b) { return a.name.localeCompare(b.name); })
+        .map(function (v) { return '<option value="' + v.id + '">' + esc(v.name) + "</option>"; }).join("");
+    }
+    if (ft.dataset.sig !== tSig) {
+      ft.dataset.sig = tSig;
+      ft.innerHTML = '<option value="">All turf</option>' + S.turf.slice()
+        .sort(function (a, b) { return a.name.localeCompare(b.name); })
+        .map(function (t) { return '<option value="' + t.id + '">' + esc(t.name) + "</option>"; }).join("");
+    }
+    fv.value = S.ui.fVol; ft.value = S.ui.fTurf;
+  }
+
+  function renderBanner() {
+    var b = $("#banner"), bits = [];
+    var samples = S.shifts.concat(S.volunteers, S.turf).filter(function (x) { return x.sample; }).length;
+    if (samples) {
+      bits.push('<div class="banner"><b>Sample plan loaded.</b> ' + samples +
+        " example records are here so the board is not empty &mdash; they are not your data." +
+        '<span class="spacer"></span><button class="btn" data-clearsamples>Clear samples</button></div>');
+    }
+    if (Store.connected && Store.mode === "local") {
+      bits.push('<div class="banner" style="background:var(--surface-2);border-color:var(--rule-strong)">' +
+        "<b>Saving to this browser only.</b> The shared plan is not connected, so nobody else sees these changes." +
+        "</div>");
+    }
+    b.innerHTML = bits.join("");
+  }
+
+  /* ---------------- render: calendar ---------------- */
+  function chipHTML(s) {
+    var t = turfById(s.turfId), vs = crew(s);
+    var goal = goalOf(s), kn = knockedOf(s);
+    var pctv = goal ? Math.min(100, Math.round(kn / goal * 100)) : 0;
+    var dots = vs.slice(0, 4).map(function (v) {
+      return '<span class="dot" title="' + esc(v.name) + '">' + esc(initials(v.name)) + "</span>";
+    }).join("");
+    if (vs.length > 4) dots += '<span class="dot more">+' + (vs.length - 4) + "</span>";
+    if (!vs.length && !isCanceled(s)) dots = '<span class="dot empty" title="Nobody assigned yet">!</span>';
+    var doors = kn ? nf(kn) + "/" + nf(goal) : (goal ? nf(goal) : "&mdash;");
+    return '<button class="chip' + (isCanceled(s) ? " canceled" : "") + '" data-shift="' + s.id +
+      '" style="--ct:' + turfColor(t) + '" title="' + esc((t ? t.name : "Unassigned turf") + " · " + fmtTime(s.start) + "–" + fmtTime(s.end)) + '">' +
+      '<span class="chip-r1"><span class="chip-t num">' + fmtTime(s.start) + "</span>" +
+      '<span class="chip-name">' + esc(t ? t.name : "Unassigned turf") + "</span>" +
+      '<span class="chip-d num">' + doors + "</span></span>" +
+      '<span class="chip-r2">' + dots + "</span>" +
+      (goal ? '<span class="meter"><i class="' + (kn >= goal ? "done" : "") + '" style="width:' + pctv + '%"></i></span>' : "") +
+      "</button>";
+  }
+
+  function weekLabel(sun) {
+    var end = new Date(sun); end.setDate(end.getDate() + 6);
+    var a = M3(sun.getMonth()) + " " + sun.getDate();
+    var b = (end.getMonth() !== sun.getMonth() ? M3(end.getMonth()) + " " : "") + end.getDate();
+    return a + "&ndash;" + b;
+  }
+
+  function renderCalendar() {
+    var weeks = monthGrid(S.ui.month), list = visibleShifts(), mo = S.ui.month.getMonth();
+    var html = '<div class="panel"><div class="cal-head">' +
+      DOW.map(function (d) { return '<div class="lbl">' + d + "</div>"; }).join("") +
+      '<div class="lbl wk">Week</div></div>';
+
+    weeks.forEach(function (days) {
+      var wkPlan = 0, wkKnock = 0, wkSlots = 0;
+      var cells = days.map(function (d) {
+        var ds = iso(d), ss = shiftsOn(ds, list);
+        ss.forEach(function (s) {
+          if (isCanceled(s)) return;
+          wkPlan += goalOf(s); wkKnock += knockedOf(s); wkSlots += (s.volunteerIds || []).length;
+        });
+        var cls = ["day"];
+        if (d.getMonth() !== mo) cls.push("out");
+        if (d.getDay() === 0 || d.getDay() === 6) cls.push("weekend");
+        if (ds === TODAY) cls.push("today");
+        if (ds === S.ui.selected) cls.push("sel");
+        var flag = ds === S.settings.electionDate ? '<span class="day-flag">Election Day</span>'
+          : (ds === TODAY ? '<span class="day-flag">Today</span>' : "");
+        return '<div class="' + cls.join(" ") + '" data-day="' + ds + '">' +
+          '<div class="day-top"><span class="dnum num">' + d.getDate() + "</span>" + flag +
+          '<button class="addbtn" data-add="' + ds + '" title="Add a shift" aria-label="Add a shift on ' + shortDate(ds) + '">+</button></div>' +
+          '<div class="day-body">' + ss.map(chipHTML).join("") + "</div></div>";
+      }).join("");
+
+      var pctv = wkPlan ? Math.min(100, Math.round(wkKnock / wkPlan * 100)) : 0;
+      var wk = '<div class="wk"><div class="lbl" style="text-align:right">' + weekLabel(days[0]) + "</div>" +
+        '<div class="wk-v">' + nf(wkKnock) + "</div>" +
+        '<div class="wk-of">of ' + nf(wkPlan) + "</div>" +
+        '<span class="meter"><i class="' + (wkPlan && wkKnock >= wkPlan ? "done" : "") + '" style="width:' + pctv + '%"></i></span>' +
+        '<div class="wk-vs">' + wkSlots + " volunteer-shift" + (wkSlots === 1 ? "" : "s") + "</div></div>";
+
+      html += '<div class="cal-week">' + cells + wk + "</div>";
+    });
+    return html + "</div>";
+  }
+
+  /* ---------------- render: rail ---------------- */
+  function shiftCard(s) {
+    var t = turfById(s.turfId), vs = crew(s);
+    var goal = goalOf(s), kn = knockedOf(s);
+    var pill = '<span class="pill">Planned</span>';
+    if (isCanceled(s)) pill = '<span class="pill">Canceled</span>';
+    else if (kn > 0) pill = (goal && kn >= goal)
+      ? '<span class="pill done">Goal met</span>'
+      : '<span class="pill short">' + (goal ? Math.round(kn / goal * 100) + "% of goal" : "Knocked") + "</span>";
+
+    var meta = "";
+    if (t && t.precinct) meta += '<div><span class="k">Precinct</span><span class="num">' + esc(t.precinct) + "</span></div>";
+    if (s.site) meta += '<div><span class="k">Launch</span>' + esc(s.site) + "</div>";
+    if (s.notes) meta += '<div><span class="k">Notes</span>' + esc(s.notes) + "</div>";
+
+    var chips = vs.length
+      ? vs.map(function (v) { return '<span class="vchip">' + esc(v.name) + "</span>"; }).join("")
+      : '<span class="vchip none">Nobody assigned</span>';
+
+    return '<div class="scard' + (isCanceled(s) ? " canceled" : "") + '" style="--ct:' + turfColor(t) + '">' +
+      '<div class="scard-h"><span class="scard-t">' + fmtTime(s.start) + "&ndash;" + fmtTime(s.end) + "</span>" +
+      '<span class="scard-n">' + esc(t ? t.name : "Unassigned turf") + "</span>" + pill + "</div>" +
+      (meta ? '<div class="scard-meta">' + meta + "</div>" : "") +
+      '<div class="vrow">' + chips + "</div>" +
+      '<div class="doors"><label for="k_' + s.id + '">Knocked</label>' +
+      '<input class="inp num" id="k_' + s.id + '" type="number" min="0" step="1" data-knocked="' + s.id +
+      '" value="' + (kn || "") + '" placeholder="0">' +
+      '<span class="goal">of ' + (goal ? nf(goal) : "&mdash;") + " goal" +
+      (Number(s.contacts) ? " &middot; " + nf(s.contacts) + " contacts" : "") + "</span></div>" +
+      '<div class="scard-acts"><button class="btn" data-shift="' + s.id + '">Edit</button>' +
+      '<button class="btn" data-copy="' + s.id + '">Copy for text</button>' +
+      '<button class="btn ghost" data-dup="' + s.id + '">Duplicate</button></div></div>';
+  }
+
+  function renderRail() {
+    var head, body, sel = S.ui.selected;
+    if (sel) {
+      head = '<div class="rail-head"><h2>' + longDate(sel) + "</h2><span style=\"flex:1\"></span>" +
+        '<button class="btn ghost" data-clearsel>Upcoming</button>' +
+        '<button class="btn primary" data-add="' + sel + '">+ Shift</button></div>';
+      var ss = shiftsOn(sel);
+      body = ss.length ? ss.map(shiftCard).join("")
+        : '<div class="empty"><b>Nothing on this day</b>Add a canvass and put names against it.</div>';
+    } else {
+      head = '<div class="rail-head"><h2>Next 14 days</h2><span style="flex:1"></span>' +
+        '<button class="btn primary" data-add="' + TODAY + '">+ Shift</button></div>';
+      var end = new Date(); end.setDate(end.getDate() + 14);
+      var endISO = iso(end);
+      var up = visibleShifts().filter(function (s) { return s.date >= TODAY && s.date <= endISO; })
+        .sort(function (a, b) { return a.date === b.date ? byTime(a, b) : a.date.localeCompare(b.date); });
+      if (!up.length) {
+        body = '<div class="empty"><b>Nothing on the books</b>Click any day on the calendar to schedule a canvass.</div>';
+      } else {
+        var last = "";
+        body = up.map(function (s) {
+          var h = "";
+          if (s.date !== last) { last = s.date; h = '<div class="daygroup">' + shortDate(s.date) + "</div>"; }
+          return h + shiftCard(s);
+        }).join("");
+      }
+    }
+    return head + '<div class="rail-body">' + body + "</div>";
+  }
+
+  /* ---------------- render: tables ---------------- */
+  function renderRoster() {
+    var y = S.ui.month.getFullYear(), mo = S.ui.month.getMonth();
+    var rows = S.volunteers.slice().sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); })
+      .map(function (v) {
+        var mine = S.shifts.filter(function (s) { return !isCanceled(s) && (s.volunteerIds || []).indexOf(v.id) >= 0; });
+        var inMo = mine.filter(function (s) { var d = fromISO(s.date); return d.getFullYear() === y && d.getMonth() === mo; }).length;
+        var share = mine.reduce(function (a, s) { return a + knockedOf(s) / Math.max(1, (s.volunteerIds || []).length); }, 0);
+        var next = mine.filter(function (s) { return s.date >= TODAY; }).sort(function (a, b) { return a.date.localeCompare(b.date); })[0];
+        return "<tr data-editvol=\"" + v.id + "\" style=\"cursor:pointer\">" +
+          '<td><div class="name">' + esc(v.name) + '</div><div class="sub">' + esc(v.role || "Canvasser") + "</div></td>" +
+          "<td>" + (v.phone ? '<span class="num">' + esc(v.phone) + "</span>" : '<span class="sub">&mdash;</span>') + "</td>" +
+          "<td>" + (v.avail ? esc(v.avail) : '<span class="sub">&mdash;</span>') + "</td>" +
+          '<td class="r num">' + inMo + "</td>" +
+          '<td class="r num">' + nf(Math.round(share)) + "</td>" +
+          "<td>" + (next ? shortDate(next.date) + ' <span class="sub num">' + fmtTime(next.start) + "</span>"
+                         : '<span class="sub">not scheduled</span>') + "</td></tr>";
+      }).join("");
+
+    return '<div class="panel"><div class="panel-head"><div><h2>Volunteers</h2>' +
+      "<p>Who is on the roster, and how much of " + M3(mo) + " they are carrying.</p></div>" +
+      '<span style="flex:1"></span><button class="btn primary" data-newvol>+ Add volunteer</button></div>' +
+      (rows ? '<div class="tablewrap"><table><thead><tr><th>Volunteer</th><th>Phone</th>' +
+        "<th>Usually available</th><th class=\"r\">Shifts in " + M3(mo) + "</th>" +
+        '<th class="r" title="Doors knocked on their shifts, split evenly across the crew">Doors (share)</th>' +
+        "<th>Next out</th></tr></thead><tbody>" + rows + "</tbody></table></div>"
+      : '<div style="padding:16px"><div class="empty"><b>No volunteers yet</b>' +
+        "Add the people who walk turf, then assign them to shifts.</div></div>") + "</div>";
+  }
+
+  function renderTurf() {
+    var rows = S.turf.slice().sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); })
+      .map(function (t) {
+        var mine = S.shifts.filter(function (s) { return !isCanceled(s) && s.turfId === t.id; });
+        var knocked = mine.reduce(function (a, s) { return a + knockedOf(s); }, 0);
+        var universe = Number(t.doors) || 0;
+        var pctv = universe ? Math.min(100, Math.round(knocked / universe * 100)) : 0;
+        var next = mine.filter(function (s) { return s.date >= TODAY; }).sort(function (a, b) { return a.date.localeCompare(b.date); })[0];
+        return '<tr data-editturf="' + t.id + '" style="cursor:pointer">' +
+          '<td><div class="name"><span class="swatch" style="--ct:' + turfColor(t) + '"></span>' + esc(t.name) + "</div>" +
+          (t.notes ? '<div class="sub">' + esc(t.notes) + "</div>" : "") + "</td>" +
+          '<td class="num">' + (t.precinct ? esc(t.precinct) : '<span class="sub">&mdash;</span>') + "</td>" +
+          '<td class="r num">' + (universe ? nf(universe) : '<span class="sub">&mdash;</span>') + "</td>" +
+          '<td class="r num">' + nf(knocked) + "</td>" +
+          '<td><div class="cov"><span class="meter"><i class="' + (pctv >= 100 ? "done" : "") +
+            '" style="width:' + pctv + '%"></i></span><span class="num">' + (universe ? pctv + "%" : "&mdash;") + "</span></div></td>" +
+          "<td>" + (next ? shortDate(next.date) : '<span class="sub">not scheduled</span>') + "</td></tr>";
+      }).join("");
+
+    return '<div class="panel"><div class="panel-head"><div><h2>Turf</h2>' +
+      "<p>Where you are knocking, and how much of each universe is covered.</p></div>" +
+      '<span style="flex:1"></span><button class="btn primary" data-newturf>+ Add turf</button></div>' +
+      (rows ? '<div class="tablewrap"><table><thead><tr><th>Turf</th><th>Precinct</th>' +
+        '<th class="r">Doors in universe</th><th class="r">Knocked</th><th>Coverage</th><th>Next out</th>' +
+        "</tr></thead><tbody>" + rows + "</tbody></table></div>"
+      : '<div style="padding:16px"><div class="empty"><b>No turf yet</b>' +
+        "Add the grids, precincts, or apartment blocks you plan to walk.</div></div>") + "</div>";
+  }
+
+  /* ---------------- orchestration ---------------- */
+  function renderAll() {
+    renderMast(); renderKpis(); renderFilters(); renderBanner();
+    $("#monthLabel").textContent = MON[S.ui.month.getMonth()] + " " + S.ui.month.getFullYear();
+    $("#monthnav").style.display = S.ui.tab === "calendar" ? "" : "none";
+    $(".filters").style.display = S.ui.tab === "calendar" ? "" : "none";
+    ["calendar", "roster", "turf"].forEach(function (t) {
+      $("#tab-" + t).setAttribute("aria-selected", String(S.ui.tab === t));
+    });
+    $("#mainpane").innerHTML = S.ui.tab === "calendar" ? renderCalendar()
+      : S.ui.tab === "roster" ? renderRoster() : renderTurf();
+    $("#rail").innerHTML = renderRail();
+  }
+
+  var toastTimer = null;
+  function note(msg) {
+    var el = $("#toast"); el.textContent = msg; el.classList.add("on");
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.classList.remove("on"); }, 3200);
+  }
+
+  /* ---------------- dialogs ---------------- */
+  function byId(list, id) { return list.filter(function (x) { return x.id === id; })[0]; }
+  function byName(a, b) { return String(a.name).localeCompare(String(b.name)); }
+
+  var shiftDlg = $("#shiftDlg"), volDlg = $("#volDlg"), turfDlg = $("#turfDlg"), setDlg = $("#setDlg");
+  var editingShift = null, editingVol = null, editingTurf = null;
+  var pickedVols = [], turfColorPick = 1;
+
+  function openDlg(d) { if (d.open) d.close(); d.showModal(); }
+
+  /* --- shift --- */
+  function renderVolPickers() {
+    var box = $("#sfVols");
+    if (!S.volunteers.length) {
+      box.innerHTML = '<span class="hint">No volunteers on the roster yet. ' +
+        '<button type="button" class="btn ghost" data-newvol style="padding:2px 8px">Add one</button></span>';
+    } else {
+      box.innerHTML = S.volunteers.slice().sort(byName).map(function (v) {
+        var on = pickedVols.indexOf(v.id) >= 0;
+        return '<button type="button" class="pick" data-pick="' + v.id + '" aria-pressed="' + on + '">' +
+          esc(v.name) + (v.role && v.role !== "Canvasser" ? ' <span class="r">' + esc(v.role) + "</span>" : "") +
+          "</button>";
+      }).join("");
+    }
+    $("#sfVolCount").textContent = pickedVols.length ? "(" + pickedVols.length + ")" : "";
+    updateEstimate();
+  }
+
+  function updateEstimate() {
+    var box = $("#sfEstimate");
+    var hrs = (mins($("#sfEnd").value) - mins($("#sfStart").value)) / 60;
+    var n = pickedVols.length, rate = Number(S.settings.rate) || 18;
+    if (!(hrs > 0)) { box.innerHTML = "<span>Set a launch time earlier than the finish time.</span>"; return; }
+    if (!n) { box.innerHTML = "<span>Assign canvassers and this estimates a door goal for you.</span>"; return; }
+    var est = estimateDoors(n, hrs, rate);
+    box.innerHTML = '<span><span class="num">' + n + "</span> canvasser" + (n === 1 ? "" : "s") +
+      ' &times; <span class="num">' + hrs.toFixed(1) + '</span> hrs &times; <span class="num">' + rate +
+      '</span> doors/hr &asymp; <span class="num">' + nf(est) + " doors</span></span>" +
+      '<span class="spacer"></span><button type="button" class="btn" data-useest="' + est + '">Use as goal</button>';
+  }
+
+  function openShift(shift, dateISO) {
+    editingShift = shift || null;
+    var isNew = !shift;
+    $("#shiftDlgTitle").textContent = isNew ? "New shift" : "Edit shift";
+    $("#sfDelete").style.display = isNew ? "none" : "";
+    $("#sfRepeat").closest(".field").style.display = isNew ? "" : "none";
+
+    var ds = shift ? shift.date : (dateISO || S.ui.selected || TODAY);
+    var d = fromISO(ds), weekend = d.getDay() === 0 || d.getDay() === 6;
+    $("#sfDate").value = ds;
+    $("#sfStart").value = shift ? shift.start : (weekend ? "10:00" : "17:00");
+    $("#sfEnd").value = shift ? shift.end : (weekend ? "13:00" : "20:00");
+    $("#sfTurf").innerHTML = '<option value="">Turf not set yet</option>' +
+      S.turf.slice().sort(byName).map(function (t) {
+        return '<option value="' + t.id + '">' + esc(t.name) + (t.precinct ? " (" + esc(t.precinct) + ")" : "") + "</option>";
+      }).join("") + '<option value="__new">+ Add new turf&hellip;</option>';
+    $("#sfTurf").value = shift ? (shift.turfId || "") : "";
+    $("#sfSite").value = shift ? (shift.site || "") : lastLaunchSite();
+    $("#sfGoal").value = shift ? (goalOf(shift) || "") : "";
+    $("#sfKnocked").value = shift ? (knockedOf(shift) || "") : "";
+    $("#sfContacts").value = shift ? (Number(shift.contacts) || "") : "";
+    $("#sfStatus").value = shift ? (shift.status || "planned") : "planned";
+    $("#sfNotes").value = shift ? (shift.notes || "") : "";
+    $("#sfRepeat").value = "0";
+    pickedVols = shift ? (shift.volunteerIds || []).slice() : [];
+    renderVolPickers();
+    openDlg(shiftDlg);
+    setTimeout(function () { $("#sfTurf").focus(); }, 0);
+  }
+
+  function lastLaunchSite() {
+    var withSite = S.shifts.filter(function (s) { return s.site; })
+      .sort(function (a, b) { return b.date.localeCompare(a.date); })[0];
+    return withSite ? withSite.site : "";
+  }
+
+  function repeatShifts(base, rep) {
+    var n = rep === 7 ? 26 : rep, made = 0, cur = fromISO(base.date);
+    for (var i = 0; i < n; i++) {
+      cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 7);
+      var ds = iso(cur);
+      if (rep === 7) {
+        if (S.settings.electionDate) { if (ds > S.settings.electionDate) break; }
+        else if (i >= 7) break;
+      }
+      Store.put("shifts", Object.assign({}, base, {
+        id: uid(), date: ds, doorsKnocked: 0, contacts: 0, status: "planned"
+      }));
+      made++;
+    }
+    return made;
+  }
+
+  $("#shiftForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var date = $("#sfDate").value;
+    if (!date) { note("Pick a date for this shift."); return; }
+    if (mins($("#sfEnd").value) <= mins($("#sfStart").value)) { note("The finish time has to be after the launch time."); return; }
+    var rec = {
+      id: editingShift ? editingShift.id : uid(),
+      date: date, start: $("#sfStart").value, end: $("#sfEnd").value,
+      turfId: $("#sfTurf").value === "__new" ? "" : $("#sfTurf").value,
+      site: $("#sfSite").value.trim(),
+      volunteerIds: pickedVols.slice(),
+      doorGoal: Number($("#sfGoal").value) || 0,
+      doorsKnocked: Number($("#sfKnocked").value) || 0,
+      contacts: Number($("#sfContacts").value) || 0,
+      status: $("#sfStatus").value,
+      notes: $("#sfNotes").value.trim()
+    };
+    if (editingShift && editingShift.sample) rec.sample = true;
+    if (rec.doorsKnocked > 0 && rec.status === "planned") rec.status = "done";
+    var wasNew = !editingShift;
+    Store.put("shifts", rec);
+    var extra = 0, rep = Number($("#sfRepeat").value) || 0;
+    if (wasNew && rep > 0) extra = repeatShifts(rec, rep);
+    shiftDlg.close();
+    S.ui.selected = rec.date;
+    S.ui.month = new Date(fromISO(rec.date).getFullYear(), fromISO(rec.date).getMonth(), 1);
+    renderAll();
+    note(wasNew ? (extra ? "Shift added, plus " + extra + " weekly repeats." : "Shift added.") : "Shift updated.");
+  });
+  $("#sfCancel").addEventListener("click", function () { shiftDlg.close(); });
+  $("#sfDelete").addEventListener("click", function () {
+    if (!editingShift) return;
+    Store.del("shifts", editingShift.id);
+    shiftDlg.close(); note("Shift deleted.");
+  });
+  shiftDlg.addEventListener("input", function (e) {
+    if (e.target.id === "sfStart" || e.target.id === "sfEnd") updateEstimate();
+  });
+  $("#sfTurf").addEventListener("change", function () {
+    if (this.value === "__new") { this.value = ""; openTurf(null); }
+  });
+
+  /* --- volunteer --- */
+  function openVol(v) {
+    editingVol = v || null;
+    $("#volDlgTitle").textContent = v ? "Edit volunteer" : "Add volunteer";
+    $("#vfDelete").style.display = v ? "" : "none";
+    $("#vfName").value = v ? v.name || "" : "";
+    $("#vfRole").value = v ? (v.role || "Canvasser") : "Canvasser";
+    $("#vfPhone").value = v ? v.phone || "" : "";
+    $("#vfAvail").value = v ? v.avail || "" : "";
+    $("#vfNotes").value = v ? v.notes || "" : "";
+    openDlg(volDlg);
+    setTimeout(function () { $("#vfName").focus(); }, 0);
+  }
+  $("#volForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var rec = {
+      id: editingVol ? editingVol.id : uid(),
+      name: $("#vfName").value.trim(), role: $("#vfRole").value,
+      phone: $("#vfPhone").value.trim(), avail: $("#vfAvail").value.trim(),
+      notes: $("#vfNotes").value.trim()
+    };
+    if (!rec.name) { note("Give this volunteer a name."); return; }
+    if (editingVol && editingVol.sample) rec.sample = true;
+    var isNew = !editingVol;
+    Store.put("volunteers", rec);
+    volDlg.close();
+    if (isNew && shiftDlg.open) { pickedVols.push(rec.id); }
+    if (shiftDlg.open) renderVolPickers();
+    note(isNew ? "Volunteer added." : "Volunteer updated.");
+  });
+  $("#vfCancel").addEventListener("click", function () { volDlg.close(); });
+  $("#vfDelete").addEventListener("click", function () {
+    if (!editingVol) return;
+    var id = editingVol.id;
+    S.shifts.filter(function (s) { return (s.volunteerIds || []).indexOf(id) >= 0; }).forEach(function (s) {
+      Store.put("shifts", Object.assign({}, s, {
+        volunteerIds: s.volunteerIds.filter(function (x) { return x !== id; })
+      }));
+    });
+    Store.del("volunteers", id);
+    pickedVols = pickedVols.filter(function (x) { return x !== id; });
+    volDlg.close(); note("Volunteer removed from the roster and their shifts.");
+  });
+
+  /* --- turf --- */
+  function renderSwatches() {
+    $("#tfColors").innerHTML = [1, 2, 3, 4, 5, 6, 7, 8].map(function (i) {
+      return '<button type="button" class="sw" data-sw="' + i + '" aria-pressed="' + (i === turfColorPick) +
+        '" style="background:var(--c' + i + ')" aria-label="Map color ' + i + '"></button>';
+    }).join("");
+  }
+  function openTurf(t) {
+    editingTurf = t || null;
+    $("#turfDlgTitle").textContent = t ? "Edit turf" : "Add turf";
+    $("#tfDelete").style.display = t ? "" : "none";
+    $("#tfName").value = t ? t.name || "" : "";
+    $("#tfPrecinct").value = t ? t.precinct || "" : "";
+    $("#tfDoors").value = t ? (Number(t.doors) || "") : "";
+    $("#tfNotes").value = t ? t.notes || "" : "";
+    turfColorPick = t && t.color ? Number(t.color) : ((S.turf.length % 8) + 1);
+    renderSwatches();
+    openDlg(turfDlg);
+    setTimeout(function () { $("#tfName").focus(); }, 0);
+  }
+  $("#turfForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var rec = {
+      id: editingTurf ? editingTurf.id : uid(),
+      name: $("#tfName").value.trim(), precinct: $("#tfPrecinct").value.trim(),
+      doors: Number($("#tfDoors").value) || 0, color: turfColorPick,
+      notes: $("#tfNotes").value.trim()
+    };
+    if (!rec.name) { note("Give this turf a name."); return; }
+    if (editingTurf && editingTurf.sample) rec.sample = true;
+    var isNew = !editingTurf;
+    Store.put("turf", rec);
+    turfDlg.close();
+    if (isNew && shiftDlg.open) {
+      var sel = $("#sfTurf");
+      sel.innerHTML = '<option value="">Turf not set yet</option>' +
+        S.turf.slice().sort(byName).map(function (t) {
+          return '<option value="' + t.id + '">' + esc(t.name) + (t.precinct ? " (" + esc(t.precinct) + ")" : "") + "</option>";
+        }).join("") + '<option value="__new">+ Add new turf&hellip;</option>';
+      sel.value = rec.id;
+    }
+    note(isNew ? "Turf added." : "Turf updated.");
+  });
+  $("#tfCancel").addEventListener("click", function () { turfDlg.close(); });
+  $("#tfDelete").addEventListener("click", function () {
+    if (!editingTurf) return;
+    var id = editingTurf.id;
+    S.shifts.filter(function (s) { return s.turfId === id; }).forEach(function (s) {
+      Store.put("shifts", Object.assign({}, s, { turfId: "" }));
+    });
+    Store.del("turf", id);
+    turfDlg.close(); note("Turf deleted; its shifts are now unassigned.");
+  });
+
+  /* --- settings --- */
+  function openSettings() {
+    $("#cfName").value = S.settings.name || "";
+    $("#cfElection").value = S.settings.electionDate || "";
+    $("#cfRate").value = Number(S.settings.rate) || 18;
+    $("#cfWeekly").value = Number(S.settings.weeklyGoal) || "";
+    openDlg(setDlg);
+    setTimeout(function () { $("#cfName").focus(); }, 0);
+  }
+  $("#setForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    S.settings.name = $("#cfName").value.trim() || "Field Program";
+    S.settings.electionDate = $("#cfElection").value || "";
+    S.settings.rate = Math.min(60, Math.max(1, Number($("#cfRate").value) || 18));
+    S.settings.weeklyGoal = Number($("#cfWeekly").value) || 0;
+    Store.putSettings();
+    setDlg.close(); note("Settings saved.");
+  });
+  $("#cfCancel").addEventListener("click", function () { setDlg.close(); });
+
+  /* ---------------- actions ---------------- */
+  function shiftText(s) {
+    var t = turfById(s.turfId), names = crew(s).map(function (v) { return v.name; });
+    var L = [shortDate(s.date) + " · " + fmtTime(s.start) + "–" + fmtTime(s.end)];
+    if (t) L.push("Turf: " + t.name + (t.precinct ? " (precinct " + t.precinct + ")" : ""));
+    if (s.site) L.push("Launch: " + s.site);
+    L.push("Out: " + (names.length ? names.join(", ") : "nobody yet"));
+    if (goalOf(s)) L.push("Goal: " + nf(goalOf(s)) + " doors");
+    if (s.notes) L.push(s.notes);
+    return L.join("\n");
+  }
+  function copyShift(id) {
+    var s = byId(S.shifts, id); if (!s) return;
+    var text = shiftText(s);
+    var done = function () { note("Shift details copied — paste it into your group text."); };
+    var fallback = function () {
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+      document.body.appendChild(ta); ta.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (err) { ok = false; }
+      document.body.removeChild(ta);
+      ok ? done() : note("Copying is blocked here. Open the shift and copy the details by hand.");
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else fallback();
+  }
+  function dupShift(id) {
+    var s = byId(S.shifts, id); if (!s) return;
+    var next = new Date(fromISO(s.date).getTime()); next.setDate(next.getDate() + 7);
+    var copy = Object.assign({}, s, {
+      id: uid(), date: iso(next), doorsKnocked: 0, contacts: 0, status: "planned"
+    });
+    delete copy.sample;
+    Store.put("shifts", copy);
+    note("Copied to " + shortDate(copy.date) + ".");
+  }
+  function clearSamples() {
+    ["shifts", "volunteers", "turf"].forEach(function (kind) {
+      S[kind].filter(function (x) { return x.sample; }).forEach(function (x) { Store.del(kind, x.id); });
+    });
+    note("Sample records cleared.");
+  }
+  function selectDay(ds) {
+    if (S.ui.selected === ds) { S.ui.selected = null; renderAll(); return; }
+    S.ui.selected = ds;
+    var d = fromISO(ds);
+    if (d.getMonth() !== S.ui.month.getMonth() || d.getFullYear() !== S.ui.month.getFullYear()) {
+      S.ui.month = new Date(d.getFullYear(), d.getMonth(), 1);
+    }
+    renderAll();
+  }
+  function togglePick(id) {
+    var i = pickedVols.indexOf(id);
+    if (i >= 0) pickedVols.splice(i, 1); else pickedVols.push(id);
+    renderVolPickers();
+  }
+
+  /* ---------------- events ---------------- */
+  document.addEventListener("click", function (e) {
+    if (!e.target || !e.target.closest) return;
+    var el;
+    if ((el = e.target.closest("[data-useest]"))) { $("#sfGoal").value = el.getAttribute("data-useest"); return; }
+    if ((el = e.target.closest("[data-pick]"))) { togglePick(el.getAttribute("data-pick")); return; }
+    if ((el = e.target.closest("[data-sw]"))) { turfColorPick = Number(el.getAttribute("data-sw")); renderSwatches(); return; }
+    if (e.target.closest("[data-newvol]")) { openVol(null); return; }
+    if (e.target.closest("[data-newturf]")) { openTurf(null); return; }
+    if (e.target.closest("[data-opensettings]")) { openSettings(); return; }
+    if (e.target.closest("[data-clearsamples]")) { clearSamples(); return; }
+    if (e.target.closest("[data-clearsel]")) { S.ui.selected = null; renderAll(); return; }
+    if ((el = e.target.closest("[data-copy]"))) { copyShift(el.getAttribute("data-copy")); return; }
+    if ((el = e.target.closest("[data-dup]"))) { dupShift(el.getAttribute("data-dup")); return; }
+    if ((el = e.target.closest("[data-add]"))) { openShift(null, el.getAttribute("data-add")); return; }
+    if ((el = e.target.closest("[data-shift]"))) { openShift(byId(S.shifts, el.getAttribute("data-shift"))); return; }
+    if ((el = e.target.closest("[data-editvol]"))) { openVol(byId(S.volunteers, el.getAttribute("data-editvol"))); return; }
+    if ((el = e.target.closest("[data-editturf]"))) { openTurf(byId(S.turf, el.getAttribute("data-editturf"))); return; }
+    if ((el = e.target.closest("[data-day]"))) { selectDay(el.getAttribute("data-day")); return; }
+  });
+
+  document.addEventListener("change", function (e) {
+    var el = e.target.closest && e.target.closest("[data-knocked]");
+    if (el) {
+      var s = byId(S.shifts, el.getAttribute("data-knocked")); if (!s) return;
+      var v = Math.max(0, Math.round(Number(el.value) || 0));
+      var rec = Object.assign({}, s, { doorsKnocked: v });
+      if (v > 0 && rec.status === "planned") rec.status = "done";
+      if (v === 0 && rec.status === "done") rec.status = "planned";
+      Store.put("shifts", rec);
+      return;
+    }
+    if (e.target.id === "fVol") { S.ui.fVol = e.target.value; renderAll(); }
+    if (e.target.id === "fTurf") { S.ui.fTurf = e.target.value; renderAll(); }
+  });
+
+  ["calendar", "roster", "turf"].forEach(function (t) {
+    $("#tab-" + t).addEventListener("click", function () { S.ui.tab = t; renderAll(); });
+  });
+  $("#prevM").addEventListener("click", function () {
+    S.ui.month = new Date(S.ui.month.getFullYear(), S.ui.month.getMonth() - 1, 1); renderAll();
+  });
+  $("#nextM").addEventListener("click", function () {
+    S.ui.month = new Date(S.ui.month.getFullYear(), S.ui.month.getMonth() + 1, 1); renderAll();
+  });
+  $("#todayBtn").addEventListener("click", function () {
+    var d = new Date();
+    S.ui.month = new Date(d.getFullYear(), d.getMonth(), 1);
+    S.ui.selected = TODAY; renderAll();
+  });
+  $("#btnNewShift").addEventListener("click", function () { openShift(null, S.ui.selected || TODAY); });
+  $("#btnSettings").addEventListener("click", openSettings);
+  $("#campName").addEventListener("click", openSettings);
+  $("#btnPrint").addEventListener("click", function () { window.print(); });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && !shiftDlg.open && !volDlg.open && !turfDlg.open && !setDlg.open && S.ui.selected) {
+      S.ui.selected = null; renderAll();
+    }
+  });
+
+  /* ---------------- boot ---------------- */
+  Store.loadLocal();
+  renderAll();
+  Store.connect();
+})();
+</script>

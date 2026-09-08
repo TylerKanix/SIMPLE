@@ -1,0 +1,32 @@
+{
+  "settings": { "name": "Sample Campaign", "electionDate": "2026-11-03", "rate": 18, "weeklyGoal": 1200 },
+  "volunteers": [
+    {"id":"v1","name":"Dana Ruiz","role":"Site captain","phone":"(555) 0134","avail":"Sat mornings","notes":"Runs packet handoff; has the clipboard bin","sample":true},
+    {"id":"v2","name":"Marcus Lee","role":"Canvasser","phone":"(555) 0177","avail":"Tue/Thu evenings","notes":"","sample":true},
+    {"id":"v3","name":"Priya Shah","role":"Canvasser","phone":"(555) 0192","avail":"Weekends","notes":"Fastest walker on the team","sample":true},
+    {"id":"v4","name":"Ben Okafor","role":"Driver","phone":"(555) 0148","avail":"Sat afternoons","notes":"Can shuttle two canvassers to Oak Hill","sample":true},
+    {"id":"v5","name":"Alice Nguyen","role":"Canvasser","phone":"(555) 0163","avail":"Sun afternoons","notes":"","sample":true},
+    {"id":"v6","name":"Tom Whitfield","role":"Canvasser","phone":"(555) 0119","avail":"Wed/Thu evenings","notes":"Needs a walk partner","sample":true},
+    {"id":"v7","name":"Sofia Castellanos","role":"Data entry","phone":"(555) 0155","avail":"Weeknights","notes":"Enters the walk sheets same night","sample":true}
+  ],
+  "turf": [
+    {"id":"t1","name":"Elm St grid","precinct":"3-2","doors":620,"color":1,"notes":"Walkable grid, sidewalks both sides","sample":true},
+    {"id":"t2","name":"Maple Heights","precinct":"3-4","doors":480,"color":2,"notes":"Long driveways — budget extra time","sample":true},
+    {"id":"t3","name":"Riverside apartments","precinct":"4-1","doors":340,"color":3,"notes":"Buzzer codes at the front desk; ask for Ana","sample":true},
+    {"id":"t4","name":"Oak Hill","precinct":"5-3","doors":710,"color":7,"notes":"Biggest universe left; needs three more passes","sample":true},
+    {"id":"t5","name":"Downtown lofts","precinct":"2-2","doors":260,"color":5,"notes":"Evenings only — nobody home during the day","sample":true}
+  ],
+  "shifts": [
+    {"id":"s01","date":"2026-09-03","start":"17:00","end":"20:00","turfId":"t5","site":"Corner of 4th & Main","volunteerIds":["v2","v6"],"doorGoal":110,"doorsKnocked":84,"contacts":22,"status":"done","notes":"Half the building was dark by 7","sample":true},
+    {"id":"s02","date":"2026-09-05","start":"10:00","end":"13:00","turfId":"t1","site":"Riverside Library lot","volunteerIds":["v1","v2","v3"],"doorGoal":160,"doorsKnocked":148,"contacts":39,"status":"done","notes":"","sample":true},
+    {"id":"s03","date":"2026-09-06","start":"12:00","end":"15:00","turfId":"t2","site":"Maple Heights rec center","volunteerIds":["v3","v5"],"doorGoal":110,"doorsKnocked":121,"contacts":28,"status":"done","notes":"","sample":true},
+    {"id":"s04","date":"2026-09-10","start":"17:00","end":"20:00","turfId":"t4","site":"Oak Hill fire station","volunteerIds":["v2","v6"],"doorGoal":110,"doorsKnocked":0,"contacts":0,"status":"planned","notes":"","sample":true},
+    {"id":"s05","date":"2026-09-12","start":"10:00","end":"13:00","turfId":"t4","site":"Oak Hill fire station","volunteerIds":["v1","v2","v3","v4"],"doorGoal":215,"doorsKnocked":0,"contacts":0,"status":"planned","notes":"Ben drives the far cut","sample":true},
+    {"id":"s06","date":"2026-09-13","start":"12:00","end":"15:00","turfId":"t1","site":"Riverside Library lot","volunteerIds":["v3","v5"],"doorGoal":110,"doorsKnocked":0,"contacts":0,"status":"planned","notes":"","sample":true},
+    {"id":"s07","date":"2026-09-15","start":"17:00","end":"20:00","turfId":"t3","site":"Riverside apartments lobby","volunteerIds":["v5","v6"],"doorGoal":110,"doorsKnocked":0,"contacts":0,"status":"planned","notes":"Get the buzzer codes from Ana first","sample":true},
+    {"id":"s08","date":"2026-09-19","start":"10:00","end":"13:00","turfId":"t2","site":"Maple Heights rec center","volunteerIds":["v1","v2","v3","v4","v5"],"doorGoal":270,"doorsKnocked":0,"contacts":0,"status":"planned","notes":"","sample":true},
+    {"id":"s09","date":"2026-09-20","start":"12:00","end":"15:00","turfId":"t5","site":"","volunteerIds":[],"doorGoal":110,"doorsKnocked":0,"contacts":0,"status":"planned","notes":"Still needs canvassers","sample":true},
+    {"id":"s10","date":"2026-09-26","start":"10:00","end":"13:00","turfId":"t4","site":"Oak Hill fire station","volunteerIds":["v1","v2","v3"],"doorGoal":160,"doorsKnocked":0,"contacts":0,"status":"planned","notes":"","sample":true},
+    {"id":"s11","date":"2026-09-27","start":"12:00","end":"15:00","turfId":"t1","site":"Riverside Library lot","volunteerIds":["v3","v5","v6"],"doorGoal":160,"doorsKnocked":0,"contacts":0,"status":"planned","notes":"","sample":true}
+  ]
+}
